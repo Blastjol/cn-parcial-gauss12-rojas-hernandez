@@ -1,8 +1,14 @@
 from __future__ import annotations
 
 import csv
+import sys
 from pathlib import Path
 from typing import List, Tuple
+
+RAIZ_PROYECTO = Path(__file__).resolve().parent.parent
+if str(RAIZ_PROYECTO) not in sys.path:
+    sys.path.insert(0, str(RAIZ_PROYECTO))
+
 import mpmath as mp
 import numpy as np
 
@@ -253,16 +259,26 @@ def main() -> None:
     print(f"kappa_2(A) estimado: {kappa_2:.6e}")
     print(
         f"Sin pivoteo -> FLOPs: {tot_sin['total_flops']} | mult_max: {res_sin_piv.multiplicador_maximo:.4e} | "
-        f"crec: {res_sin_piv.factor_crecimiento:.4e} | ||r_0||_inf: {mp.nstr(verif_sin_piv.norma_inf_inicial, 6)} | "
-        f"digitos_ini: {verif_sin_piv.digitos_correctos_inicial}"
+        f"crec: {res_sin_piv.factor_crecimiento:.4e} | ||r_0||_inf: {mp.nstr(verif_sin_piv.norma_inf_inicial, 6)}"
     )
     print(
-        f"Pivoteo escalado -> FLOPs: {tot_con['total_flops']} (comp: {tot_con['comparaciones']}, inter: {tot_con['intercambios']}) | "
+        f"Pivoteo escalado -> FLOPs: {tot_con['total_flops']} | sobrecosto pivoteo: "
+        f"{tot_con['pivoteo_div']} div_escala, {tot_con['comparaciones']} comp, {tot_con['intercambios']} inter | "
         f"mult_max: {res_con_piv.multiplicador_maximo:.4e} | crec: {res_con_piv.factor_crecimiento:.4e} | "
-        f"||r_0||_inf: {mp.nstr(verif_con_piv.norma_inf_inicial, 6)} | ||r_ref||_inf: {mp.nstr(verif_con_piv.norma_inf_refinada, 6)} | "
-        f"digitos_ini: {verif_con_piv.digitos_correctos_inicial} | digitos_ref: {verif_con_piv.digitos_correctos_refinada}"
+        f"||r_0||_inf: {mp.nstr(verif_con_piv.norma_inf_inicial, 6)} | ||r_ref||_inf: {mp.nstr(verif_con_piv.norma_inf_refinada, 6)}"
     )
-    print("Archivos generados en resultados/: solucion.csv, traza_eliminacion.txt, conteo_flops.md, residuo.txt")
+    print("\n--- TABLA 10 DIGITOS PARA readme.md ---")
+    for i in range(12):
+        val_10 = mp.nstr(mp.mpf(str(float(verif_con_piv.solucion_refinada[i]))), n=10)
+        print(f"| $x_{{{i + 1}}}$ | `{val_10}` |")
+
+    print("\n--- TABLA DETALLADA PARA informe.md ---")
+    for i in range(12):
+        d_ini = verif_con_piv.digitos_correctos_inicial[i]
+        d_ref = verif_con_piv.digitos_correctos_refinada[i]
+        val_ini = _formatear_digitos_defendibles(mp.mpf(str(float(res_con_piv.solucion_x[i]))), d_ini)
+        val_ref = _formatear_digitos_defendibles(mp.mpf(str(float(verif_con_piv.solucion_refinada[i]))), d_ref)
+        print(f"| $x_{{{i + 1}}}$ | `{val_ini}` | {d_ini} | `{val_ref}` | {d_ref} |")
 
 
 if __name__ == "__main__":
