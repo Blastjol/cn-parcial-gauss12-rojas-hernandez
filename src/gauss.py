@@ -60,14 +60,14 @@ def _elegir_pivote_escalado(
     if escala_k == 0.0:
         raise ZeroDivisionError(f"Escala nula en fila {k + 1} durante el paso {paso}.")
     mejor_razon = abs(float(A[k, k])) / escala_k
-    contador.registrar_operacion("mult_div", paso=paso, cantidad=1)
+    contador.registrar_pivoteo_div(paso=paso, cantidad=1)
 
     for i in range(k + 1, n):
         escala_i = float(escalas[i])
         if escala_i == 0.0:
             raise ZeroDivisionError(f"Escala nula en fila {i + 1} durante el paso {paso}.")
         razon_i = abs(float(A[i, k])) / escala_i
-        contador.registrar_operacion("mult_div", paso=paso, cantidad=1)
+        contador.registrar_pivoteo_div(paso=paso, cantidad=1)
         contador.registrar_comparacion(paso=paso, cantidad=1)
         if razon_i > mejor_razon:
             mejor_razon = razon_i
@@ -187,10 +187,8 @@ def eliminacion_gaussiana(
             multiplicadores.append((paso, i + 1, m_ik))
             mults_paso.append(f"m({i + 1},{k + 1})={m_ik:.6e}")
 
-            # Anular explícitamente el elemento subdiagonal ya procesado
             A[i, k] = 0.0
 
-            # Actualizar únicamente desde la columna k+1 en adelante (sin recalcular m_ik)
             for j in range(k + 1, n):
                 producto = m_ik * float(A[k, j])
                 contador.registrar_operacion("mult_div", paso=paso, cantidad=1)
@@ -201,7 +199,6 @@ def eliminacion_gaussiana(
                 if abs_val > max_abs_durante:
                     max_abs_durante = abs_val
 
-            # Actualizar el término independiente b[i]
             prod_b = m_ik * float(b[k])
             contador.registrar_operacion("mult_div", paso=paso, cantidad=1)
             b[i] = float(b[i]) - prod_b
