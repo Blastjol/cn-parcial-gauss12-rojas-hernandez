@@ -7,7 +7,6 @@
 - **Carrera:** Ingeniería Civil Informática, Facultad de Ciencias de la Ingeniería, Universidad Católica del Maule
 - **Docentes:** Juan Manuel Cabezas Contardo · Pedro Pesante
 - **Fecha:** Noviembre de 2026
-- **Repositorio Git:** [https://github.com/Blastjol/cn-parcial-gauss12-rojas-hernandez](https://github.com/Blastjol/cn-parcial-gauss12-rojas-hernandez)
 
 ## 2. Planteamiento
 
