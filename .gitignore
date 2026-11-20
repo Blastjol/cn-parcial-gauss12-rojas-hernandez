@@ -1,7 +1,20 @@
+# Entornos virtuales
 .venv/
 venv/
+env/
+ENV/
+
+# Cache y compilados de Python
 __pycache__/
 *.py[cod]
+*$py.class
+*.egg-info/
+
+# Archivos temporales y del sistema/editor
+*.tmp
+*.temp
 *.log
+*.bak
 .DS_Store
 Thumbs.db
+.vscode/settings.json
