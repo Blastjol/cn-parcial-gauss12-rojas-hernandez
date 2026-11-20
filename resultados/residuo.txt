@@ -1,0 +1,85 @@
+VERIFICACIÓN INDEPENDIENTE Y REFINAMIENTO ITERATIVO (PRECISIÓN EXTENDIDA mpmath, dps=80)
+====================================================================================
+Epsilon de máquina IEEE 754 (float64): 2.220446e-16
+Número de condición estimado kappa_2(A): 3.084736e+13
+Cota teórica de error relativo kappa_2(A) * eps: 6.849490e-03
+
+--- 1. ESTRATEGIA CON PIVOTEO PARCIAL ESCALADO ---
+Multiplicador máximo: 2.465558e+09
+Factor de crecimiento: 1.783202e+00
+Norma infinito residuo inicial ||r_0||_inf: 1.13331423482e-9
+Vector residuo inicial r_0 = b - A x_0:
+  r_0[1] = -4.65323615402e-20
+  r_0[2] = -7.828743657005e-11
+  r_0[3] = -1.94061912843e-18
+  r_0[4] = 5.19860480075e-12
+  r_0[5] = 2.068777856315e-20
+  r_0[6] = 1.133314234816e-9
+  r_0[7] = 4.80771487165e-18
+  r_0[8] = -7.45568699565e-12
+  r_0[9] = -7.5792627036e-20
+  r_0[10] = -1.14704822903e-12
+  r_0[11] = 3.020318141992e-17
+  r_0[12] = -4.998797328035e-11
+Pasadas de refinamiento iterativo ejecutadas: 1
+Corrección obtenida dx:
+  dx[1] = 2.200000e-15
+  dx[2] = -8.600000e-15
+  dx[3] = -4.979000e-15
+  dx[4] = 2.980000e-15
+  dx[5] = 3.000000e-15
+  dx[6] = -4.552500e-15
+  dx[7] = -4.400000e-15
+  dx[8] = 8.500000e-16
+  dx[9] = 4.100000e-15
+  dx[10] = 2.500000e-15
+  dx[11] = -7.940000e-16
+  dx[12] = 4.600000e-15
+Solución corregida x_refinada vs inicial x_0:
+  x[1]: inicial=7.384915627000e-01 | refinada=7.384915627000e-01 | dígitos ini=14 | dígitos ref=15
+  x[2]: inicial=-1.205937416800e+00 | refinada=-1.205937416800e+00 | dígitos ini=14 | dígitos ref=15
+  x[3]: inicial=4.387195200005e-03 | refinada=4.387195200000e-03 | dígitos ini=11 | dígitos ref=15
+  x[4]: inicial=-9.172645380000e-02 | refinada=-9.172645380000e-02 | dígitos ini=13 | dígitos ref=15
+  x[5]: inicial=2.846109372500e+00 | refinada=2.846109372500e+00 | dígitos ini=14 | dígitos ref=15
+  x[6]: inicial=-6.281540899995e-03 | refinada=-6.281540900000e-03 | dígitos ini=12 | dígitos ref=15
+  x[7]: inicial=1.473820591600e+00 | refinada=1.473820591600e+00 | dígitos ini=14 | dígitos ref=15
+  x[8]: inicial=-3.849271640000e-02 | refinada=-3.849271640000e-02 | dígitos ini=13 | dígitos ref=15
+  x[9]: inicial=9.152648037000e-01 | refinada=9.152648037000e-01 | dígitos ini=14 | dígitos ref=15
+  x[10]: inicial=-2.607139485200e+00 | refinada=-2.607139485200e+00 | dígitos ini=15 | dígitos ref=15
+  x[11]: inicial=5.187362940000e-02 | refinada=5.187362940000e-02 | dígitos ini=13 | dígitos ref=15
+  x[12]: inicial=-1.084937162500e+00 | refinada=-1.084937162500e+00 | dígitos ini=14 | dígitos ref=15
+Norma infinito residuo refinado ||r_ref||_inf: 1.10542957505e-75
+Vector residuo refinado r_ref = b - A x_refinada:
+  r_ref[1] = 1.28688939736701e-85
+  r_ref[2] = 1.03634022661133e-76
+  r_ref[3] = 0.0
+  r_ref[4] = 6.47712641632083e-77
+  r_ref[5] = 5.14755758946803e-85
+  r_ref[6] = 1.10542957505209e-75
+  r_ref[7] = 0.0
+  r_ref[8] = -2.76357393763022e-76
+  r_ref[9] = -5.14755758946803e-85
+  r_ref[10] = -6.47712641632083e-78
+  r_ref[11] = 6.58887371451908e-83
+  r_ref[12] = 5.00897776195478e-76
+Control con numpy.linalg.solve (diferencia absoluta |x_ref - x_numpy|):
+  |x[1]_ref - x[1]_np| = 5.806466e-14
+  |x[2]_ref - x[2]_np| = 7.251977e-13
+  |x[3]_ref - x[3]_np| = 3.952299e-13
+  |x[4]_ref - x[4]_np| = 2.544492e-13
+  |x[5]_ref - x[5]_np| = 3.690381e-13
+  |x[6]_ref - x[6]_np| = 5.820873e-13
+  |x[7]_ref - x[7]_np| = 4.964917e-13
+  |x[8]_ref - x[8]_np| = 6.634970e-14
+  |x[9]_ref - x[9]_np| = 1.857403e-13
+  |x[10]_ref - x[10]_np| = 3.947953e-13
+  |x[11]_ref - x[11]_np| = 7.013140e-14
+  |x[12]_ref - x[12]_np| = 3.690381e-13
+
+--- 2. ESTRATEGIA SIN PIVOTEO ---
+Multiplicador máximo: 2.752593e+13
+Factor de crecimiento: 2.641224e+03
+Norma infinito residuo inicial ||r_0||_inf: 1.77147779935e-7
+Norma infinito residuo tras refinamiento ||r_ref||_inf: 1.832062689e-10
+Dígitos defendibles iniciales por componente: [10, 9, 7, 8, 9, 7, 9, 8, 9, 9, 8, 9]
+Dígitos defendibles refinados por componente: [15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15]
