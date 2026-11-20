@@ -52,7 +52,7 @@ Las operaciones aritméticas elementales (`+`, `-`, `*`, `/`), comparaciones e i
 - **Efecto del pivoteo y crecimiento:** Sin pivoteo, $\max \|m_{ik}\| = 2.7526 \times 10^{13}$ y $\rho = 2.6412 \times 10^3$, reduciendo los dígitos defendibles iniciales a `7` en las incógnitas más sensibles ($x_3$ y $x_6$). Con pivoteo parcial escalado, $\rho$ baja a `1.7832` y $\max \|m_{ik}\|$ a `2.4656 \times 10^9$, elevando los dígitos iniciales a entre `11` y `15`.
 - **Residuo y refinamiento iterativo:** En sistemas con $\kappa_2(A) \sim 3 \times 10^{13}$, un residuo pequeño en `float64` no garantiza por sí solo un error pequeño en $x$ sin evaluar en mayor precisión. Al calcular $r = b - Ax$ en `mpmath` (`dps=80`) y aplicar refinamiento iterativo, $\|r\|_\infty$ pasa de `1.13331e-09` a `1.10543e-75` y la solución `float64` alcanza el techo de `15` dígitos significativos defendibles de su formato.
 
-## 4. Conclusiones, limitaciones y flujo en Git
+## 4. Conclusiones y limitaciones
 
 - **Conclusiones:** El pivoteo parcial escalado controla eficazmente el crecimiento de entradas y protege los dígitos significativos; la verificación con `mpmath` y el refinamiento iterativo resultan determinantes ante $\kappa_2(A) \approx 3.08 \times 10^{13}$.
 - **Limitaciones:** El costo asintótico $O(n^3)$ en matrices densas y el límite de ~15–16 dígitos decimales de `float64` al almacenar la solución final.
