@@ -81,23 +81,31 @@ def _estimar_referencia_mp(
     iteraciones: int = 4,
     dps: int = 80,
 ) -> List[mp.mpf]:
-    """Construye una solución de referencia refinada en alta precisión."""
+    """Calcula la solución de referencia exacta en precisión extendida (mpmath)."""
     mp.mp.dps = dps
-    A_float = np.array([[float(val) for val in fila] for fila in A_mp], dtype=np.float64)
-    x_actual = np.array(x_base, dtype=np.float64, copy=True)
+    n = len(b_mp)
+    M = [[A_mp[i][j] for j in range(n)] for i in range(n)]
+    rhs = [b_mp[i] for i in range(n)]
 
-    for _ in range(iteraciones):
-        residuo_mp, _ = calcular_residuo_mp(A_mp, b_mp, x_actual, dps=dps)
-        r_float = np.array([float(val) for val in residuo_mp], dtype=np.float64)
-        res_corr = eliminacion_gaussiana(
-            A_float,
-            r_float,
-            usar_pivoteo_escalado=usar_pivoteo_escalado,
-            contador=None,
-        )
-        x_actual = x_actual + res_corr.solucion_x
+    for k in range(n - 1):
+        escalas = [max(abs(M[i][j]) for j in range(k, n)) for i in range(k, n)]
+        mejor = max(range(k, n), key=lambda i: abs(M[i][k]) / escalas[i - k])
+        if mejor != k:
+            M[k], M[mejor] = M[mejor], M[k]
+            rhs[k], rhs[mejor] = rhs[mejor], rhs[k]
+        for i in range(k + 1, n):
+            m_ik = M[i][k] / M[k][k]
+            M[i][k] = mp.mpf("0")
+            for j in range(k + 1, n):
+                M[i][j] -= m_ik * M[k][j]
+            rhs[i] -= m_ik * rhs[k]
 
-    return [mp.mpf(str(val)) for val in x_actual]
+    x_ref = [mp.mpf("0")] * n
+    for i in range(n - 1, -1, -1):
+        suma = rhs[i] - sum(M[i][j] * x_ref[j] for j in range(i + 1, n))
+        x_ref[i] = suma / M[i][i]
+
+    return x_ref
 
 
 def estimar_digitos_correctos(
