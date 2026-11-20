@@ -56,4 +56,3 @@ Las operaciones aritméticas elementales (`+`, `-`, `*`, `/`), comparaciones e i
 
 - **Conclusiones:** El pivoteo parcial escalado controla eficazmente el crecimiento de entradas y protege los dígitos significativos; la verificación con `mpmath` y el refinamiento iterativo resultan determinantes ante $\kappa_2(A) \approx 3.08 \times 10^{13}$.
 - **Limitaciones:** El costo asintótico $O(n^3)$ en matrices densas y el límite de ~15–16 dígitos decimales de `float64` al almacenar la solución final.
-- **Control de versiones:** Trabajo coordinado en Git/GitHub con ramas `main` y `pruebas`, commits descriptivos en español, exclusión de `.venv/` y `__pycache__/` mediante `.gitignore`, y reproducción íntegra mediante `python -m src.main`.s
