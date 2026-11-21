@@ -1,4 +1,4 @@
-# cn-parcial-gauss12 — Eliminación gaussiana 12×12
+# Evaluacion 3 El pivote
 
 Resuelve un sistema lineal denso de 12 incógnitas con eliminación gaussiana propia (sin pivoteo y con pivoteo parcial escalado), con conteo instrumentado de flops, residuo en precisión extendida y refinamiento iterativo.
 
