@@ -5,10 +5,22 @@ import math
 from dataclasses import dataclass
 from pathlib import Path
 from typing import List, Tuple
+
 import mpmath as mp
 import numpy as np
 
+from src.conteo import ContadorOperaciones
 from src.gauss import ResultadoEliminacion, resolver_con_lu
+
+DPS = 80
+MAX_DIGITOS = 15  # tope defendible en float64
+
+
+@dataclass
+class Iteracion:
+    pasada: int
+    norma_inf_residuo: mp.mpf
+    error_rel_inf: float
 
 
 @dataclass
@@ -23,184 +35,140 @@ class ResultadoVerificacion:
     referencia_alta_precision: List[mp.mpf]
     digitos_correctos_inicial: List[int]
     digitos_correctos_refinada: List[int]
+    digitos_correctos_numpy: List[int]
     error_relativo_inf_inicial: float
     error_relativo_inf_refinado: float
     error_relativo_2_inicial: float
     error_relativo_2_refinado: float
+    error_relativo_inf_numpy: float
+    historial_float: List[Iteracion]
+    historial_extendido: List[Iteracion]
+    flops_por_pasada: int
     pasadas_refinamiento: int
 
 
-def _cargar_datos_mp(
-    ruta_matriz_a: str | Path,
-    ruta_vector_b: str | Path,
-    dps: int = 80,
-) -> Tuple[List[List[mp.mpf]], List[mp.mpf]]:
+def cargar_datos_mp(ruta_a, ruta_b, dps: int = DPS) -> Tuple[List[List[mp.mpf]], List[mp.mpf]]:
     mp.mp.dps = dps
-    with open(ruta_matriz_a, mode="r", encoding="utf-8", newline="") as f_a:
-        A_mp = [
-            [mp.mpf(celda.strip()) for celda in fila if celda.strip() != ""]
-            for fila in csv.reader(f_a)
-            if any(celda.strip() != "" for celda in fila)
-        ]
-    with open(ruta_vector_b, mode="r", encoding="utf-8", newline="") as f_b:
-        b_mp = [
-            mp.mpf(fila[0].strip())
-            for fila in csv.reader(f_b)
-            if fila and fila[0].strip() != ""
-        ]
-    return A_mp, b_mp
+    with open(ruta_a, encoding="utf-8", newline="") as f:
+        A = [[mp.mpf(c.strip()) for c in fila if c.strip()] for fila in csv.reader(f) if any(c.strip() for c in fila)]
+    with open(ruta_b, encoding="utf-8", newline="") as f:
+        b = [mp.mpf(fila[0].strip()) for fila in csv.reader(f) if fila and fila[0].strip()]
+    return A, b
 
 
-def calcular_residuo_mp(
-    A_mp: List[List[mp.mpf]],
-    b_mp: List[mp.mpf],
-    x_vec: np.ndarray | List[mp.mpf],
-    dps: int = 80,
-) -> Tuple[List[mp.mpf], mp.mpf]:
-    """Calcula r = b - Ax y ||r||_inf en precisión extendida mpmath."""
+def calcular_residuo_mp(A, b, x, dps: int = DPS) -> Tuple[List[mp.mpf], mp.mpf]:
+    """r = b - A x con x convertido SIN pérdida (float -> mpf es exacto) y A, b exactos."""
     mp.mp.dps = dps
-    n = len(b_mp)
-    x_mp = [mp.mpf(float(val)) if not isinstance(val, mp.mpf) else val for val in x_vec]
-    residuo: List[mp.mpf] = []
-    max_abs = mp.mpf("0")
-
+    n = len(b)
+    xm = [v if isinstance(v, mp.mpf) else mp.mpf(float(v)) for v in x]
+    r = []
     for i in range(n):
-        ax_i = mp.mpf("0")
+        s = mp.mpf(0)
         for j in range(n):
-            ax_i += A_mp[i][j] * x_mp[j]
-        r_i = b_mp[i] - ax_i
-        residuo.append(r_i)
-        abs_r_i = abs(r_i)
-        if abs_r_i > max_abs:
-            max_abs = abs_r_i
-
-    return residuo, max_abs
+            s += A[i][j] * xm[j]
+        r.append(b[i] - s)
+    return r, max(abs(v) for v in r)
 
 
-def _estimar_referencia_mp(
-    A_mp: List[List[mp.mpf]],
-    b_mp: List[mp.mpf],
-    dps: int = 80,
-) -> List[mp.mpf]:
-    """Calcula la solución de referencia exacta en precisión extendida (mpmath)."""
+def referencia_mp(A, b, dps: int = DPS) -> List[mp.mpf]:
+    """Eliminación propia con pivoteo escalado en dps dígitos (no usa mp.lu_solve)."""
     mp.mp.dps = dps
-    n = len(b_mp)
-    M = [[A_mp[i][j] for j in range(n)] for i in range(n)]
-    rhs = [b_mp[i] for i in range(n)]
-
+    n = len(b)
+    M = [fila[:] for fila in A]
+    rhs = b[:]
+    s = [max(abs(v) for v in fila) for fila in M]
     for k in range(n - 1):
-        escalas = [max(abs(M[i][j]) for j in range(k, n)) for i in range(k, n)]
-        mejor = max(range(k, n), key=lambda i: abs(M[i][k]) / escalas[i - k])
-        if mejor != k:
-            M[k], M[mejor] = M[mejor], M[k]
-            rhs[k], rhs[mejor] = rhs[mejor], rhs[k]
+        p = max(range(k, n), key=lambda i: abs(M[i][k]) / s[i])
+        if p != k:
+            M[k], M[p] = M[p], M[k]
+            rhs[k], rhs[p] = rhs[p], rhs[k]
+            s[k], s[p] = s[p], s[k]
         for i in range(k + 1, n):
-            m_ik = M[i][k] / M[k][k]
-            M[i][k] = mp.mpf("0")
+            m = M[i][k] / M[k][k]
+            M[i][k] = mp.mpf(0)
             for j in range(k + 1, n):
-                M[i][j] -= m_ik * M[k][j]
-            rhs[i] -= m_ik * rhs[k]
-
-    x_ref = [mp.mpf("0")] * n
+                M[i][j] -= m * M[k][j]
+            rhs[i] -= m * rhs[k]
+    x = [mp.mpf(0)] * n
     for i in range(n - 1, -1, -1):
-        suma = rhs[i] - sum(M[i][j] * x_ref[j] for j in range(i + 1, n))
-        x_ref[i] = suma / M[i][i]
-
-    return x_ref
+        x[i] = (rhs[i] - sum(M[i][j] * x[j] for j in range(i + 1, n))) / M[i][i]
+    return x
 
 
-def _errores_relativos_globales(
-    x_aprox: np.ndarray,
-    x_referencia: List[mp.mpf],
-    dps: int = 80,
-) -> Tuple[float, float]:
-    """Calcula ||x - x_ref||_inf / ||x_ref||_inf y ||x - x_ref||_2 / ||x_ref||_2."""
+def errores_relativos(x, ref, dps: int = DPS) -> Tuple[float, float]:
     mp.mp.dps = dps
-    diffs = [abs(mp.mpf(float(x_aprox[i])) - x_referencia[i]) for i in range(len(x_referencia))]
-    refs = [abs(r) for r in x_referencia]
-
-    err_inf = float(max(diffs) / max(refs))
-    err_2 = float(mp.sqrt(sum(d * d for d in diffs)) / mp.sqrt(sum(r * r for r in refs)))
-    return err_inf, err_2
+    xm = [v if isinstance(v, mp.mpf) else mp.mpf(float(v)) for v in x]
+    d = [abs(xm[i] - ref[i]) for i in range(len(ref))]
+    r = [abs(v) for v in ref]
+    return float(max(d) / max(r)), float(mp.sqrt(sum(v * v for v in d)) / mp.sqrt(sum(v * v for v in r)))
 
 
-def estimar_digitos_correctos(
-    x_aprox: np.ndarray,
-    x_referencia: List[mp.mpf],
-    dps: int = 80,
-) -> List[int]:
-    """Estima dígitos significativos defendibles (criterio e_rel <= 0.5 * 10^-d)."""
+def digitos_correctos(x, ref, dps: int = DPS) -> List[int]:
     mp.mp.dps = dps
-    digitos: List[int] = []
-    for idx, ref in enumerate(x_referencia):
-        aprox_mp = mp.mpf(float(x_aprox[idx]))
-        if ref == 0:
-            digitos.append(0)
-            continue
-        error_rel = abs(aprox_mp - ref) / abs(ref)
-        if error_rel == 0:
-            d = 15
-        else:
-            d = int(math.floor(-mp.log10(2 * error_rel)))
-        d_defendible = max(0, min(15, d))
-        digitos.append(d_defendible)
-    return digitos
+    out = []
+    for xi, ri in zip(x, ref):
+        e = abs(mp.mpf(float(xi)) - ri) / abs(ri)
+        d = MAX_DIGITOS if e == 0 else int(mp.floor(-mp.log10(2 * e)))
+        out.append(max(0, min(MAX_DIGITOS, d)))
+    return out
 
 
-def verificar_solucion(
-    ruta_matriz_a: str | Path,
-    ruta_vector_b: str | Path,
-    resultado_eliminacion: ResultadoEliminacion,
-    pasadas_refinamiento: int = 1,
-    dps: int = 80,
-) -> ResultadoVerificacion:
-    """Ejecuta residuo extendido, refinamiento reutilizando L y U, control numpy y errores."""
+def verificar_solucion(ruta_matriz_a, ruta_vector_b, resultado: ResultadoEliminacion,
+                       pasadas_refinamiento: int = 1, dps: int = DPS) -> ResultadoVerificacion:
     if pasadas_refinamiento < 1:
-        raise ValueError("Se requiere al menos una pasada de refinamiento iterativo.")
+        raise ValueError("Se requiere al menos una pasada de refinamiento.")
+    mp.mp.dps = dps
+    A_mp, b_mp = cargar_datos_mp(ruta_matriz_a, ruta_vector_b, dps)
+    n = len(b_mp)
+    A_f = np.array([[float(v) for v in f] for f in A_mp])
+    b_f = np.array([float(v) for v in b_mp])
+    ref = referencia_mp(A_mp, b_mp, dps)
 
-    x_inicial = resultado_eliminacion.solucion_x
-    A_mp, b_mp = _cargar_datos_mp(ruta_matriz_a, ruta_vector_b, dps=dps)
-    A_float = np.array([[float(val) for val in fila] for fila in A_mp], dtype=np.float64)
-    b_float = np.array([float(val) for val in b_mp], dtype=np.float64)
+    x0 = np.array(resultado.solucion_x, dtype=np.float64, copy=True)
+    r0, n0 = calcular_residuo_mp(A_mp, b_mp, x0, dps)
 
-    res_ini, norm_ini = calcular_residuo_mp(A_mp, b_mp, x_inicial, dps=dps)
+    cnt = ContadorOperaciones(num_pasos=n - 1)
+    # --- refinamiento iterado en float64 (3 pasadas registradas; se reporta `pasadas_refinamiento`) ---
+    x = x0.copy()
+    hist_f: List[Iteracion] = []
+    dx = np.zeros(n)
+    x_reportada = x0.copy()
+    for p in range(1, max(3, pasadas_refinamiento) + 1):
+        r, _ = calcular_residuo_mp(A_mp, b_mp, x, dps)
+        dx = resolver_con_lu(resultado, np.array([float(v) for v in r]), contador=cnt if p == 1 else None)
+        x = x + dx
+        _, nr = calcular_residuo_mp(A_mp, b_mp, x, dps)
+        hist_f.append(Iteracion(p, nr, errores_relativos(x, ref, dps)[0]))
+        if p == pasadas_refinamiento:
+            x_reportada = x.copy()
+            dx_reportada = dx.copy()
+    flops_pasada = cnt.totales()["total_flops"]
 
-    x_actual = np.array(x_inicial, dtype=np.float64, copy=True)
-    ultima_dx = np.zeros_like(x_actual)
+    # --- refinamiento con iterado en precisión extendida (diagnóstico) ---
+    xe = [mp.mpf(float(v)) for v in x0]
+    hist_e: List[Iteracion] = []
+    for p in range(1, 5):
+        r, _ = calcular_residuo_mp(A_mp, b_mp, xe, dps)
+        dxe = resolver_con_lu(resultado, np.array([float(v) for v in r]))
+        xe = [xe[i] + mp.mpf(float(dxe[i])) for i in range(n)]
+        _, nr = calcular_residuo_mp(A_mp, b_mp, xe, dps)
+        hist_e.append(Iteracion(p, nr, errores_relativos(xe, ref, dps)[0]))
 
-    for _ in range(pasadas_refinamiento):
-        r_actual_mp, _ = calcular_residuo_mp(A_mp, b_mp, x_actual, dps=dps)
-        r_actual_float = np.array([float(val) for val in r_actual_mp], dtype=np.float64)
-        ultima_dx = resolver_con_lu(resultado_eliminacion, r_actual_float)
-        x_actual = x_actual + ultima_dx
-
-    res_ref, norm_ref = calcular_residuo_mp(A_mp, b_mp, x_actual, dps=dps)
-
-    # Control independiente mediante rutina de biblioteca
-    sol_numpy = np.linalg.solve(A_float, b_float)
-
-    # Referencia de alta precisión para defender dígitos significativos
-    ref_mp = _estimar_referencia_mp(A_mp, b_mp, dps=dps)
-
-    dig_ini = estimar_digitos_correctos(x_inicial, ref_mp, dps=dps)
-    dig_ref = estimar_digitos_correctos(x_actual, ref_mp, dps=dps)
-    err_inf_ini, err_2_ini = _errores_relativos_globales(x_inicial, ref_mp, dps=dps)
-    err_inf_ref, err_2_ref = _errores_relativos_globales(x_actual, ref_mp, dps=dps)
+    res_ref, n_ref = calcular_residuo_mp(A_mp, b_mp, x_reportada, dps)
+    x_np = np.linalg.solve(A_f, b_f)  # SOLO control
 
     return ResultadoVerificacion(
-        residuo_inicial=res_ini,
-        norma_inf_inicial=norm_ini,
-        correccion_dx=ultima_dx,
-        solucion_refinada=x_actual,
-        residuo_refinado=res_ref,
-        norma_inf_refinada=norm_ref,
-        solucion_numpy=sol_numpy,
-        referencia_alta_precision=ref_mp,
-        digitos_correctos_inicial=dig_ini,
-        digitos_correctos_refinada=dig_ref,
-        error_relativo_inf_inicial=err_inf_ini,
-        error_relativo_inf_refinado=err_inf_ref,
-        error_relativo_2_inicial=err_2_ini,
-        error_relativo_2_refinado=err_2_ref,
-        pasadas_refinamiento=pasadas_refinamiento,
+        residuo_inicial=r0, norma_inf_inicial=n0, correccion_dx=dx_reportada,
+        solucion_refinada=x_reportada, residuo_refinado=res_ref, norma_inf_refinada=n_ref,
+        solucion_numpy=x_np, referencia_alta_precision=ref,
+        digitos_correctos_inicial=digitos_correctos(x0, ref, dps),
+        digitos_correctos_refinada=digitos_correctos(x_reportada, ref, dps),
+        digitos_correctos_numpy=digitos_correctos(x_np, ref, dps),
+        error_relativo_inf_inicial=errores_relativos(x0, ref, dps)[0],
+        error_relativo_inf_refinado=errores_relativos(x_reportada, ref, dps)[0],
+        error_relativo_2_inicial=errores_relativos(x0, ref, dps)[1],
+        error_relativo_2_refinado=errores_relativos(x_reportada, ref, dps)[1],
+        error_relativo_inf_numpy=errores_relativos(x_np, ref, dps)[0],
+        historial_float=hist_f, historial_extendido=hist_e,
+        flops_por_pasada=flops_pasada, pasadas_refinamiento=pasadas_refinamiento,
     )
