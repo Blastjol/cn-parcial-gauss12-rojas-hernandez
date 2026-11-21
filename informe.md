@@ -1,37 +1,44 @@
-# Informe Técnico: Eliminación gaussiana con mínimo costo operacional y máxima exactitud de mantisa
+# El pivote — Eliminación gaussiana con mínimo costo operacional y máxima exactitud de mantisa
 
 ## 1. Identificación
 
-- **Estudiantes:** Blas Emilio Rojas Díaz · Joaquín Alonso Hernández Castro
-- **Asignatura:** Computación Numérica (INF-321)
-- **Carrera:** Ingeniería Civil Informática, Facultad de Ciencias de la Ingeniería, Universidad Católica del Maule
-- **Docentes:** Juan Manuel Cabezas Contardo · Pedro Pesante
-- **Fecha:** Noviembre de 2026
-- **Repositorio Git:** https://github.com/Blastjol/cn-parcial-gauss12-rojas-hernandez
+| Campo | Detalle |
+|---|---|
+| Estudiantes | Blas Emilio Rojas Díaz · Joaquín Alonso Hernández Castro |
+| Asignatura | Computación Numérica (INF-321), Ingeniería Civil Informática, Universidad Católica del Maule |
+| Docentes | Juan Manuel Cabezas Contardo · Pedro Pesante |
+| Fecha | Talca, noviembre de 2026 |
+| Repositorio | https://github.com/Blastjol/cn-parcial-gauss12-rojas-hernandez |
 
 ## 2. Planteamiento
 
-Se resuelve el sistema lineal denso $Ax = b$ de dimensión $n = 12$ ($144$ entradas no nulas en $A$ y $12$ componentes en $b$ cargadas con todas sus cifras exactas desde `datos/matriz_a.csv` y `datos/vector_b.csv`) en doble precisión IEEE 754 (`float64`, mantisa de 53 bits, $\varepsilon_{\text{mach}} = 2^{-52} \approx 2.220446 \times 10^{-16}$).
+Se resuelve $Ax=b$ con $A\in\mathbb{R}^{12\times12}$ densa (144 de 144 elementos no nulos, 9 cifras significativas por elemento) y $b$ entregado con 20 dígitos. Ambos se leen **sin truncar** desde `datos/` (`float(str)` redondea al `double` más cercano; la verificación usa los mismos textos en `mpmath`). Como control de integridad de los datos, $\det A = 1.3646\times10^{9}$ y $\kappa_2(A)\approx3.08\times10^{13}$ coinciden con los valores del enunciado.
 
-El sistema presenta tres dificultades numéricas diseñadas para degradar la mantisa:
-1. **Escalas de fila incompatibles:** las magnitudes de las filas oscilan entre $10^{-8}$ y $10^{5}$ (13 órdenes de magnitud). Restar un múltiplo de una fila grande a una pequeña desplaza los bits bajos fuera de los 53 bits de mantisa por alineamiento de exponentes.
-2. **Pivote inicial minúsculo:** $a_{1,1} = 1.3407 \times 10^{-8}$ es trece órdenes menor que $a_{6,1} = 3.69040121 \times 10^{5}$, provocando multiplicadores gigantescos si no se intercambia fila.
-3. **Casi dependencia lineal oculta en la Fila 7:** la Fila 7 satisface aproximadamente $F_7 \approx 4.1632\,F_3 + 584.5077\,F_5$ salvo una perturbación de orden $\mathcal{O}(10^{-4})$ relativo (por ejemplo, en $c_1$: $4.2(2.70519337\times 10^{-3}) + 586(4.11556548\times 10^{-5}) = 3.5479\times 10^{-2}$ frente a $a_{7,1} = 3.5470172\times 10^{-2}$). Esto mantiene la matriz no singular ($|\det(A)| \approx 3.7689 \times 10^{10} \neq 0$), pero eleva su número de condición a $\kappa_2(A) \approx 3.084736 \times 10^{13}$.
+Tres rasgos hacen costoso el problema en `float64` ($u=2^{-53}\approx1.11\times10^{-16}$, 53 bits de mantisa):
+
+1. **Escalas de fila incompatibles.** La norma de las filas va de $2.1\times10^{-4}$ (F1) a $2.3\times10^{6}$ (F6). Restar a una fila pequeña un múltiplo de una grande alinea exponentes y descarta los bits bajos del operando pequeño.
+2. **Pivote inicial minúsculo.** $a_{11}=1.3407\times10^{-8}$; $a_{21}/a_{11}\approx8.9\times10^{11}$ (doce órdenes) y $a_{61}/a_{11}\approx2.75\times10^{13}$.
+3. **Casi dependencia lineal de la fila 7.** Un ajuste de mínimos cuadrados relativo da $F_7\approx4.1732\,F_3+582.69\,F_5$, con desviación relativa máxima por columna de $9\times10^{-3}$. El enunciado la señala como causa de $\kappa_2(A)\approx3\times10^{13}$ sin que $\det A$ se anule; la sección 6 mide cuánto de ese $\kappa_2$ proviene de la escala de las filas.
 
 ## 3. Estrategia de eliminación
 
-Se implementó una única rutina base (`eliminacion_gaussiana` en `src/gauss.py`) parametrizada por `usar_pivoteo_escalado`, evitando duplicar código o calcular la inversa de $A$:
-- **Anulación estricta de los 66 elementos subdiagonales:** en cada paso $k = 1,\dots,11$, se fija `A[i, k] = 0.0` y el ciclo interno recorre únicamente las columnas $j = k+1,\dots,12$, evitando $66 \times 2 = 132$ operaciones redundantes sobre entradas ya anuladas.
-- **Reutilización única de multiplicadores y factores $PA = LU$:** para cada fila $i > k$, el multiplicador $m_{ik} = a_{ik}/a_{kk}$ se calcula **una sola vez**, se almacena en la matriz triangular inferior unitaria $L$ y se reutiliza en toda la fila $i$ y en la actualización de $b_i$. Los factores $P$, $L$ y $U$ se conservan para resolver el refinamiento iterativo en $\mathcal{O}(n^2)$ sin volver a factorizar $A$.
-- **Pivoteo parcial escalado en $\mathcal{O}(n^2)$:** al inicio del algoritmo se determina una única vez la escala de cada fila $s_i = \max_{1 \le j \le 12} |a_{ij}^{(0)}|$. En cada paso $k$, se selecciona la fila pivote $p \ge k$ que maximiza $|a_{pk}| / s_p$, intercambiando las filas $k$ y $p$ en $A$, $L$, $b$ y $s$ cuando $p \neq k$.
+Una única rutina (`eliminacion_gaussiana`, `src/gauss.py`) con tres políticas: `ninguno`, `parcial` y `escalado`. El orden es el clásico por columnas, $k=1,\dots,11$, y obtiene $PA=LU$.
+
+- **Pivoteo parcial escalado.** Las escalas $s_i=\max_j|a_{ij}^{(0)}|$ se calculan **una vez** ($n(n-1)=132$ comparaciones). En el paso $k$ se elige la fila $p\ge k$ que maximiza $|a_{pk}|/s_p$ y se intercambian filas en $A$, $L$, $b$ y $s$.
+- **Un multiplicador por fila.** $m_{ik}=a_{ik}/a_{kk}$ se calcula con **una** división, se guarda en $L$ y se reutiliza en toda la fila $i$ y en $b_i$. Recalcularlo por columna costaría ≈1750 flops.
+- **No se toca la subdiagonal.** El barrido va de $j=k+1$ a $n$; el elemento $a_{ik}$ se fija en 0 sin operar. Así se anulan los 66 elementos bajo la diagonal sin gastar flops en ellos.
+- **Una sola factorización, nunca la inversa.** $L$, $U$ y $P$ se reutilizan en el refinamiento, que cuesta 276 flops por pasada frente a 1354 de refactorizar.
+
+**Por qué no excede el mínimo.** Con $m=n-k$ filas por debajo del pivote, el paso $k$ gasta $m$ divisiones + $m^2$ mult + $m^2$ restas (A) + $m$ mult + $m$ restas (b). Sumando $m=1..11$: $66+1012+132=1210$; la sustitución regresiva agrega $66+66+12=144$. Total $=1354$, dominado por $2n^3/3=1152$.
 
 ## 4. Conteo de operaciones
 
-**Convención declarada:** 1 FLOP = 1 operación aritmética elemental (`+`, `-`, `*`, `/`) ejecutada durante la eliminación hacia adelante, actualización de $b$ y sustitución regresiva. Las divisiones de escalamiento ($|a_{ik}|/s_i$), comparaciones de búsqueda e intercambios de fila se contabilizan por separado como sobrecosto de estabilidad (`resultados/conteo_flops.md`).
+**Convención:** 1 flop = 1 operación aritmética elemental (`+ − × ÷`) en eliminación, actualización de $b$ y sustitución regresiva. Las divisiones de escalamiento, las comparaciones y los intercambios son **sobrecosto de estabilidad** y se reportan aparte. El conteo sale de contadores en `src/gauss.py` (impresos en `resultados/conteo_flops.md`); la forma cerrada solo se usa como verificación cruzada.
 
-| Etapa / Paso | Mult / Div | Sum / Resta | FLOPs elim./sust. | Div. escalamiento (pivoteo) | Comparaciones (pivoteo) | Intercambios |
+| Etapa | Mult/Div | Sum/Resta | FLOPs | Div. escala | Comparaciones | Intercambios |
 |---|---:|---:|---:|---:|---:|---:|
-| Paso 1 | 143 | 132 | 275 | 12 | 143 | 1 |
+| Previo (escalas $s_i$) | 0 | 0 | 0 | 0 | 132 | 0 |
+| Paso 1 | 143 | 132 | 275 | 12 | 11 | 1 |
 | Paso 2 | 120 | 110 | 230 | 11 | 10 | 0 |
 | Paso 3 | 99 | 90 | 189 | 10 | 9 | 1 |
 | Paso 4 | 80 | 72 | 152 | 9 | 8 | 1 |
@@ -43,68 +50,95 @@ Se implementó una única rutina base (`eliminacion_gaussiana` en `src/gauss.py`
 | Paso 10 | 8 | 6 | 14 | 3 | 2 | 0 |
 | Paso 11 | 3 | 2 | 5 | 2 | 1 | 0 |
 | Sustitución regresiva | 78 | 66 | 144 | 0 | 0 | 0 |
-| **Total** | **716** | **638** | **1,354** | **77** | **198** | **8** |
+| **Total** | **716** | **638** | **1354** | **77** | **198** | **8** |
 
-- **Comparación con cotas teóricas:** Para $n = 12$, el término cúbico dominante es $2n^3/3 = 1,152$ FLOPs. Al incluir las actualizaciones de $b$ (132 FLOPs) y la sustitución regresiva (144 FLOPs), nuestro algoritmo alcanza **1,354 FLOPs** (716 multiplicaciones/divisiones y 638 sumas/restas), ubicándose dentro del margen aceptado $\pm 10\%$ (`[1337, 1635]`) respecto de la cota referencial de 1,486 FLOPs y evitando el exceso de $\approx 1,750$ FLOPs por recalcular multiplicadores o $\ge 7,000$ FLOPs por invertir $A$. El pivoteo parcial escalado agrega un sobrecosto separado de **77 divisiones de escala**, **198 comparaciones** ($132$ para escalas iniciales + $66$ de búsqueda) y **8 intercambios**.
+| Estrategia | FLOPs | vs. cota 1486 | Sobrecosto de estabilidad |
+|---|---:|---:|---|
+| Sin pivoteo | 1354 | −8.9 % | ninguno |
+| Parcial | 1354 | −8.9 % | 66 comparaciones + 9 intercambios |
+| **Parcial escalado (elegida)** | **1354** | **−8.9 %** | 77 div + 198 comp + 8 intercambios |
+
+Los tres quedan dentro del ±10 % ([1337, 1635]). La diferencia con 1486 se debe a que aquí el barrido arranca en $k+1$ (sin tocar la columna anulada). El pivoteo no agrega un solo flop aritmético; su costo son ≈283 operaciones de otro tipo, $\mathcal{O}(n^2)$.
 
 ## 5. Análisis de mantisa y pivoteo
 
-| Métrica | Sin pivoteo | Con pivoteo parcial escalado |
-|---|---:|---:|
-| Multiplicador máximo ($\max \|m_{ik}\|$) | `2.7526e+13` | `2.4656e+09` |
-| Factor de crecimiento ($\rho$) | `2.6412e+03` | `1.7832e+00` |
-| Bits perdidos por crecimiento ($\log_2 \rho$) | `11.37 bits` | `0.83 bits` |
-| Error relativo inicial ($\|x_0 - x_{\text{ref}}\|_\infty / \|x_{\text{ref}}\|_\infty$) | `2.0803e-10` | `2.3576e-13` |
-| Dígitos significativos iniciales (rango en $x_1\dots x_{12}$) | `8 a 11 dígitos` | `12 a 14 dígitos` |
-| Bits de mantisa perdidos en solución inicial (de 53 bits) | `16 a 26 bits` | `6 a 13 bits` |
+| Métrica | Sin pivoteo | Parcial | Parcial escalado |
+|---|---:|---:|---:|
+| Multiplicador máximo | $2.7526\times10^{13}$ ($2^{44.65}$) | $0.620$ | $2.4656\times10^{9}$ ($2^{31.20}$) |
+| Factor de crecimiento $\rho$ | $2.6412\times10^{3}$ (11.37 bits) | $1.000$ | $1.7832$ (0.83 bits) |
+| Bits del operando absorbidos (máx. en una resta) | 18.11 | 7.26 | 6.29 |
+| Error relativo final $\|x_0-x\|_\infty/\|x\|_\infty$ | $2.08\times10^{-10}$ | $5.52\times10^{-13}$ | $2.36\times10^{-13}$ |
+| Bits de mantisa perdidos, $\log_2(e/u)$ | 20.8 | 12.3 | 11.1 |
+| Dígitos correctos (rango en $x_1..x_{12}$) | 6 a 9 | 9 a 12 | 9 a 12 |
+| $\|r_0\|_\infty$ | $1.77\times10^{-7}$ | $5.4\times10^{-10}$ | $2.29\times10^{-10}$ |
 
-- **Rechazo del pivote $a_{1,1} = 1.3407 \times 10^{-8}$:** Sin pivoteo, dividir filas de orden $10^{5}$ por $a_{1,1}$ produce $m_{6,1} \approx 2.7526 \times 10^{13} \approx 2^{44.65}$. Al restar $m_{6,1} a_{1,j}$ de $a_{6,j}$, el alineamiento de exponentes desplaza $\approx 44.6$ bits de la mantisa de 53 bits, destruyendo los bits menos significativos y elevando el factor de crecimiento a $\rho = 2.6412 \times 10^{3}$ (degradando $x_3$ y $x_6$ a 8 dígitos). Con pivoteo parcial escalado, en el Paso 1 se selecciona la Fila 11 ($|a_{11,1}|/s_{11} \approx 0.6798$), manteniendo $\rho = 1.7832$ ($< 1$ bit de crecimiento) y preservando entre 12 y 14 dígitos iniciales.
+**Por qué se rechaza $a_{11}=1.3407\times10^{-8}$.** Dividir por él da $m_{61}=2.75\times10^{13}=2^{44.65}$. Al hacer $a_{6j}-m_{61}a_{1j}$, el término $m_{61}a_{1j}$ domina por completo a $a_{6j}$: en el peor caso el operando original queda 18.1 bits por debajo del producto, de modo que esos bits de $a_{6j}$ se pierden de forma irrecuperable al redondear a 53 bits. Los elementos de la matriz crecen hasta $2.6\times10^{3}$ veces el máximo inicial (11.4 bits), y esa pérdida se propaga a todas las incógnitas: el error final es $2\times10^{-10}$ y $x_3,x_6$ quedan con solo 6 dígitos. Con pivoteo en el paso 1 se intercambian F1 y F8 (razón escalada $|a_{81}|/s_8=1$), y el crecimiento se mantiene en $\rho=1.78$.
+
+**Lectura de los multiplicadores.** Que el pivoteo escalado deje un multiplicador de $2.5\times10^{9}$ no es un defecto: solo aparece cuando la fila $i$ es varios órdenes mayor que la fila pivote, y entonces $m\,a_{kj}$ es del tamaño de la propia fila $i$. Por eso los bits absorbidos son solo 6.29 y $\rho=1.78$. El multiplicador absoluto no mide el daño; $\rho$ y los bits absorbidos sí.
+
+**Parcial vs. escalado, con honestidad.** En esta matriz el pivoteo parcial simple ya es casi tan bueno ($5.5\times10^{-13}$ vs. $2.4\times10^{-13}$): el escalado mejora el error inicial en un factor ≈2.3 a cambio de 77 divisiones y 132 comparaciones extra. Como ambos terminan en 15 dígitos tras refinar, la ventaja del escalado es pequeña pero real, y su costo es despreciable frente a los 1354 flops.
 
 ## 6. Condicionamiento
 
-- **Estimación de $\kappa_2(A)$ y cota clásica:** Mediante valores singulares (`np.linalg.svd`), se obtiene $\kappa_2(A) = \sigma_{\max}/\sigma_{\min} \approx 3.084736 \times 10^{13}$. La cota clásica de perturbación predice:
-  $$\frac{\|\delta x\|_2}{\|x\|_2} \lesssim \kappa_2(A)\,\varepsilon_{\text{mach}} \approx (3.084736 \times 10^{13})(2.220446 \times 10^{-16}) \approx 6.85 \times 10^{-3}$$
-  lo cual garantiza teóricamente apenas $-\log_{10}(6.85 \times 10^{-3}) \approx 2.16$ dígitos significativos en el peor caso.
-- **Por qué la cota resulta pesimista aquí:** La cota $\kappa_2(A)\,\varepsilon$ supone el peor escenario posible: que los errores de redondeo acumulados se alineen exactamente con el vector singular derecho asociado a $\sigma_{\min}$ (en la dirección de la casi dependencia lineal entre las filas 3, 5 y 7) y que el factor de crecimiento sea elevado. Gracias al pivoteo parcial escalado ($\rho = 1.7832$), el error hacia atrás (*backward error*) es muy inferior a $\varepsilon$, permitiendo recuperar **12 a 14 dígitos** antes del refinamiento y **15 dígitos** tras refinar.
+| Medida | Valor |
+|---|---:|
+| $\kappa_2(A)=\sigma_{\max}/\sigma_{\min}$ (SVD, solo diagnóstico) | $3.08\times10^{13}$ |
+| $\kappa_1(A)$ / $\kappa_\infty(A)$ | $4.47\times10^{13}$ / $5.37\times10^{13}$ |
+| $\kappa_2(D^{-1}A)$, filas equilibradas ($s_i=\max_j|a_{ij}|$) | $8.13\times10^{3}$ |
+
+**Cota clásica.** $\|\delta x\|/\|x\|\lesssim\kappa_2\,\varepsilon=(3.08\times10^{13})(2.22\times10^{-16})\approx6.8\times10^{-3}$, que solo garantiza $-\log_{10}(6.8\times10^{-3})\approx2.2$ dígitos. Sin embargo, con pivoteo se obtienen 9–12 dígitos y con refinamiento 15.
+
+**Por qué la cota es pesimista aquí.**
+1. **Casi todo el $\kappa_2$ viene de la escala de las filas, no de la geometría.** Equilibrar las filas lo baja a $8.1\times10^{3}$ (casi diez órdenes de magnitud). El pivoteo escalado se comporta como eliminar sobre $D^{-1}A$, cuya cota $8.1\times10^{3}\cdot\varepsilon\approx1.8\times10^{-12}$ (≈11.7 dígitos) es consistente con el error observado $2.4\times10^{-13}$.
+2. La cota supone un error de retroceso normwise de tamaño $\varepsilon\|A\|$, mientras que con pivoteo el error es componentwise, del orden de $\varepsilon|A|$; las filas pequeñas no se contaminan con la norma de las grandes.
+3. La cota usa el peor caso de alineación del error con el vector singular de $\sigma_{\min}$; el error real rara vez lo alcanza.
+
+La casi dependencia entre F3, F5 y F7 es detectable (sección 2), pero es el residuo, no la cota, quien decide el número de dígitos. Los datos ($A$ con 9 cifras exactas, $b$ con 20 dígitos) se tratan como exactos, así que no hay error de entrada que $\kappa$ pueda amplificar.
 
 ## 7. Resultados
 
-A continuación se reportan las 12 incógnitas obtenidas con pivoteo parcial escalado (solución inicial y tras 1 pasada de refinamiento iterativo), indicando exactamente los dígitos significativos defendibles mediante el criterio riguroso $e_{\text{rel},i} \le 0.5 \times 10^{-d_i} \implies d_i = \lfloor -\log_{10}(2\,e_{\text{rel},i}) \rfloor$ frente a la referencia en precisión extendida (`mpmath`, `dps = 80`):
+Solución con pivoteo parcial escalado + 1 pasada de refinamiento. Dígitos correctos $d_i$: mayor $d$ con $|e_{\text{rel}}|\le0.5\times10^{-d}$ frente a la referencia de 80 dígitos, con tope 15 (límite de `float64`). Se reportan exactamente $d_i$ cifras.
 
-| Incógnita | Solución inicial (pivoteo escalado) | Dígitos iniciales defendibles | Solución refinada (reportada) | Dígitos finales defendibles (`float64`) |
+| Incógnita | Valor reportado | Dígitos afirmados | Valor inicial (antes de refinar) | Dígitos iniciales |
 |---|---:|---:|---:|---:|
-| $x_{1}$ | `0.7384915627` | 14 | `0.7384915627` | 15 |
-| $x_{2}$ | `-1.2059374168` | 14 | `-1.2059374168` | 15 |
-| $x_{3}$ | `0.0043871952` | 12 | `0.0043871952` | 15 |
-| $x_{4}$ | `-0.0917264538` | 13 | `-0.0917264538` | 15 |
-| $x_{5}$ | `2.8461093725` | 14 | `2.8461093725` | 15 |
-| $x_{6}$ | `-0.0062815409` | 12 | `-0.0062815409` | 15 |
-| $x_{7}$ | `1.4738205916` | 14 | `1.4738205916` | 15 |
-| $x_{8}$ | `-0.0384927164` | 13 | `-0.0384927164` | 15 |
-| $x_{9}$ | `0.9152648037` | 14 | `0.9152648037` | 15 |
-| $x_{10}$ | `-2.6071394852` | 14 | `-2.6071394852` | 15 |
-| $x_{11}$ | `0.0518736294` | 14 | `0.0518736294` | 15 |
-| $x_{12}$ | `-1.0849371625` | 14 | `-1.0849371625` | 15 |
+| $x_1$ | `0.738491562700000` | 15 | `0.738491562700` | 12 |
+| $x_2$ | `-1.20593741680000` | 15 | `-1.2059374168` | 11 |
+| $x_3$ | `0.00438719520000000` | 15 | `0.00438719520` | 9 |
+| $x_4$ | `-0.0917264538000000` | 15 | `-0.091726453800` | 11 |
+| $x_5$ | `2.84610937250000` | 15 | `2.84610937250` | 12 |
+| $x_6$ | `-0.00628154090000000` | 15 | `-0.00628154090` | 9 |
+| $x_7$ | `1.47382059160000` | 15 | `1.47382059160` | 12 |
+| $x_8$ | `-0.0384927164000000` | 15 | `-0.038492716400` | 11 |
+| $x_9$ | `0.915264803700000` | 15 | `0.915264803700` | 12 |
+| $x_{10}$ | `-2.60713948520000` | 15 | `-2.60713948520` | 12 |
+| $x_{11}$ | `0.0518736294000000` | 15 | `0.051873629400` | 11 |
+| $x_{12}$ | `-1.08493716250000` | 15 | `-1.08493716250` | 12 |
 
-*(Nota: Los ceros finales a la derecha se omiten en la notación decimal estándar porque la solución racional exacta posee 10 cifras decimales no nulas; tras 1 pasada de refinamiento iterativo, las 12 componentes alcanzan la máxima precisión representable en `float64` con 15 dígitos significativos).*
+La solución exacta tiene a lo sumo 10 decimales; por eso, pasados esos decimales, los dígitos reportados son ceros, y son correctos. Los 12 valores superan el umbral de 8 dígitos. Los valores con 17 cifras están en `resultados/solucion.csv`.
 
 ## 8. Verificación
 
-- **Residuo en precisión extendida (`mpmath`, `dps=80`):** Evaluando $r = b - Ax$ con los datos exactos sin truncar, la solución inicial con pivoteo escalado obtiene $\|r_0\|_\infty = 3.32926 \times 10^{-10}$ (frente a $1.77148 \times 10^{-7}$ sin pivoteo).
-- **Refinamiento iterativo reutilizando $P, L, U$:** Calculando $r_0 = b - Ax_0$ en 80 dígitos, resolviendo $PA\,\Delta x = Pr_0$ mediante sustitución progresiva y regresiva sobre los factores $L$ y $U$ ya almacenados (`resolver_con_lu` en `src/gauss.py`, sin volver a factorizar $A$) y actualizando $x_1 = x_0 + \Delta x$, el error relativo global cae de $2.3576 \times 10^{-13}$ a $6.0160 \times 10^{-17}$ (límite de representación binaria de `float64`), con $\|r_{\text{ref}}\|_\infty = 2.60319 \times 10^{-10}$ y 15 dígitos defendibles en las 12 incógnitas.
-- **Control independiente con biblioteca:** Contrastando $x_{\text{ref}}$ contra `numpy.linalg.solve(A, b)` (usado únicamente como control externo), la diferencia máxima componente a componente es del orden de $\sim 10^{-13}$ respecto de $x_0$ y $\sim 10^{-16}$ respecto de $x_1$, confirmando la exactitud de la implementación propia.
+- **Residuo en precisión extendida** (`mpmath`, 80 dígitos, datos exactos): $\|r_0\|_\infty=2.29\times10^{-10}$ con pivoteo escalado ($1.77\times10^{-7}$ sin pivoteo). El vector completo está en `resultados/residuo.txt`.
+- **Refinamiento iterativo** (residuo extendido, corrección con $P,L,U$ ya calculados, 276 flops por pasada):
+
+| Variante | Pasada 1 | Pasada 2 | Pasada 3 | Pasada 4 |
+|---|---:|---:|---:|---:|
+| Iterado en `float64` (error relativo) | $6.0\times10^{-17}$ | $6.0\times10^{-17}$ | $6.0\times10^{-17}$ | — |
+| Iterado en precisión extendida (error relativo) | $6.2\times10^{-26}$ | $1.6\times10^{-38}$ | $4.2\times10^{-51}$ | $1.1\times10^{-63}$ |
+
+El error relativo cae de $2.4\times10^{-13}$ a $6.0\times10^{-17}$ en una pasada, y luego no baja más porque $x$ está guardado en `float64` (media unidad de redondeo es $1.1\times10^{-16}$). Con el iterado en precisión extendida se ve que cada pasada gana ≈12.6 dígitos, que es la calidad de la factorización. **El residuo no mejora** en `float64` ($2.29\times10^{-10}\to2.60\times10^{-10}$): su piso es $u\,|A||x|\approx10^{-10}$. Lo que mejora es el error en $x$, no el residuo, y esa diferencia es la lección de un sistema mal condicionado.
+- **Control con biblioteca:** `numpy.linalg.solve` (solo control) da un error relativo de $5.2\times10^{-13}$ y 9–12 dígitos, equivalente a la corrida propia sin refinar; la solución refinada difiere de la de numpy en ≤ $1.5\times10^{-12}$.
 
 ## 9. Conclusiones
 
-- **Compromiso costo/exactitud:** Agregar un sobrecosto controlado en $\mathcal{O}(n^2)$ de 77 divisiones de escala, 198 comparaciones y 8 intercambios sobre la base de 1,354 FLOPs aritméticos evita la amplificación catastrófica provocada por $a_{1,1} = 1.3407 \times 10^{-8}$ y las escalas heterogéneas ($10^{-8}$ a $10^{5}$), elevando la exactitud inicial a 12–14 dígitos y alcanzando precisión completa en `float64` (15 dígitos) tras una sola pasada de refinamiento iterativo.
-- **Qué haría distinto con $n = 1000$:** Para $n = 1000$ ($\frac{2}{3}n^3 \approx 6.67 \times 10^8$ FLOPs), mantendría el cálculo único de escalas en $\mathcal{O}(n^2)$ y la reutilización de $PA = LU$ para el refinamiento iterativo, pero: (1) reemplazaría los bucles escalares en Python por operaciones vectorizadas por bloques (BLAS-3 / NumPy) para aprovechar caché y SIMD; (2) aplicaría los intercambios mediante un vector de índices de permutación sin copiar filas completas en memoria; (3) estimaría $\kappa_1(A)$ en $\mathcal{O}(n^2)$ en lugar de calcular una SVD completa en $\mathcal{O}(n^3)$; y (4) omitiría la escritura de trazas matriciales paso a paso en disco por su volumen $\mathcal{O}(n^3)$.
+- **Compromiso elegido.** La eliminación base (1354 flops, −8.9 % de la cota) es la misma para las tres políticas. Elegir el pivoteo parcial escalado agrega solo 77 divisiones, 198 comparaciones y 8 intercambios, evita el crecimiento de $2.6\times10^{3}$ del caso sin pivoteo, y deja 9–12 dígitos. El refinamiento sube a 15 dígitos por solo 276 flops, sin refactorizar. No hay un compromiso real entre costo y exactitud: la estabilidad cuesta $\mathcal{O}(n^2)$, y el mínimo $\mathcal{O}(n^3)$ no se toca.
+- **Qué dice la comparación.** La cota $\kappa\varepsilon$ prometía 2 dígitos y se obtuvieron 15; no sirve como estimación, solo como garantía. El diagnóstico útil fue equilibrar las filas ($\kappa_2$: $3\times10^{13}\to8\times10^{3}$).
+- **Con $n=1000$** ($\tfrac23n^3\approx6.7\times10^{8}$ flops): (1) LU por bloques con BLAS-3 en lugar de bucles escalares; (2) pivoteo parcial simple, o equilibrar filas una vez en $\mathcal{O}(n^2)$ (el escalado dinámico cuesta divisiones extra por paso), con un vector de permutación en lugar de copiar filas; (3) factorización in situ (L y U en la misma matriz) y sin trazas por paso, que serían $\mathcal{O}(n^3)$ en disco; (4) estimar $\kappa_1$ con el estimador de Hager–Higham sobre los factores en $\mathcal{O}(n^2)$ en lugar de una SVD $\mathcal{O}(n^3)$; (5) refinamiento con factorización en baja precisión y residuo en alta.
 
-## 10. Reproducibilidad, referencias y declaración de uso de IA
+## 10. Reproducibilidad
 
-- **Entorno de ejecución:** Python 3.10 o superior (entorno virtual `.venv`), librerías con versión fija en `requirements.txt` (`numpy` y `mpmath`).
-- **Comando de reproducción:** `python src/main.py` desde la raíz del repositorio (regenera `solucion.csv`, `traza_eliminacion.txt`, `conteo_flops.md` y `residuo.txt` en `resultados/`).
-- **Referencias bibliográficas:**
-  - Burden, R. L., & Faires, J. D. (2011). *Análisis Numérico* (9.ª ed.). Cengage Learning. (Cap. 6: Métodos directos para resolver sistemas lineales y pivoteo parcial escalado).
-  - Golub, G. H., & Van Loan, C. F. (2013). *Matrix Computations* (4.ª ed.). Johns Hopkins University Press. (Cap. 3: Gaussian Elimination, growth factor y análisis de error hacia atrás).
-  - Higham, N. J. (2002). *Accuracy and Stability of Numerical Algorithms* (2.ª ed.). SIAM. (Cap. 9 y 12: Error de redondeo en eliminación gaussiana y refinamiento iterativo).
-- **Declaración explícita de uso de asistentes de IA (Sección 9):** Se utilizó el asistente de IA **Gemini** como apoyo para estructurar la modularización del código en Python, verificar la instrumentación del conteo de operaciones y revisar la redacción técnica del informe. Todo el código original, los resultados experimentales y cada línea entregada fueron revisados, ejecutados y validados por los autores.
+- **Entorno:** Python 3.12.3 (se exige ≥ 3.10), `numpy==2.2.6`, `mpmath==1.3.0` (`requirements.txt`). Probado en un entorno virtual limpio.
+- **Comando:** `python src/main.py` desde la raíz; regenera `resultados/conteo_flops.md`, `traza_eliminacion.txt`, `solucion.csv` y `residuo.txt` sin intervención manual.
+- **Variaciones esperables:** $\kappa_2$ y el error de `numpy.linalg.solve` dependen de la versión de LAPACK en el 4.º–5.º dígito; por eso se citan con 3 cifras. Flops, multiplicadores, $\rho$ y los errores del código propio son deterministas.
+- **Fuentes:** Burden y Faires, *Análisis Numérico* (9.ª ed., 2011), cap. 6; Golub y Van Loan, *Matrix Computations* (4.ª ed., 2013), cap. 3; Higham, *Accuracy and Stability of Numerical Algorithms* (2.ª ed., 2002), caps. 9 y 12.
+- **Uso de asistentes de IA.** Se usó **Gemini** para la estructura modular inicial del código y un primer borrador del informe. Se usó **Claude** (Anthropic) para revisar el repositorio contra la rúbrica, corregir cifras del informe que no coincidían con la ejecución, ampliar `gauss.py`, `conteo.py`, `verificacion.py` y `main.py`, y redactar nuevamente `informe.md` y `readme.md`. Todas las cifras de este informe provienen de la ejecución de `python src/main.py`; los autores deben poder explicar cada línea en la defensa oral.
