@@ -8,7 +8,7 @@ from typing import List, Tuple
 import mpmath as mp
 import numpy as np
 
-from src.gauss import eliminacion_gaussiana
+from src.gauss import ResultadoEliminacion, resolver_con_lu
 
 
 @dataclass
@@ -23,6 +23,10 @@ class ResultadoVerificacion:
     referencia_alta_precision: List[mp.mpf]
     digitos_correctos_inicial: List[int]
     digitos_correctos_refinada: List[int]
+    error_relativo_inf_inicial: float
+    error_relativo_inf_refinado: float
+    error_relativo_2_inicial: float
+    error_relativo_2_refinado: float
     pasadas_refinamiento: int
 
 
@@ -56,7 +60,7 @@ def calcular_residuo_mp(
     """Calcula r = b - Ax y ||r||_inf en precisión extendida mpmath."""
     mp.mp.dps = dps
     n = len(b_mp)
-    x_mp = [mp.mpf(str(float(val))) if not isinstance(val, mp.mpf) else val for val in x_vec]
+    x_mp = [mp.mpf(float(val)) if not isinstance(val, mp.mpf) else val for val in x_vec]
     residuo: List[mp.mpf] = []
     max_abs = mp.mpf("0")
 
@@ -76,9 +80,6 @@ def calcular_residuo_mp(
 def _estimar_referencia_mp(
     A_mp: List[List[mp.mpf]],
     b_mp: List[mp.mpf],
-    x_base: np.ndarray,
-    usar_pivoteo_escalado: bool = True,
-    iteraciones: int = 4,
     dps: int = 80,
 ) -> List[mp.mpf]:
     """Calcula la solución de referencia exacta en precisión extendida (mpmath)."""
@@ -108,16 +109,31 @@ def _estimar_referencia_mp(
     return x_ref
 
 
+def _errores_relativos_globales(
+    x_aprox: np.ndarray,
+    x_referencia: List[mp.mpf],
+    dps: int = 80,
+) -> Tuple[float, float]:
+    """Calcula ||x - x_ref||_inf / ||x_ref||_inf y ||x - x_ref||_2 / ||x_ref||_2."""
+    mp.mp.dps = dps
+    diffs = [abs(mp.mpf(float(x_aprox[i])) - x_referencia[i]) for i in range(len(x_referencia))]
+    refs = [abs(r) for r in x_referencia]
+
+    err_inf = float(max(diffs) / max(refs))
+    err_2 = float(mp.sqrt(sum(d * d for d in diffs)) / mp.sqrt(sum(r * r for r in refs)))
+    return err_inf, err_2
+
+
 def estimar_digitos_correctos(
     x_aprox: np.ndarray,
     x_referencia: List[mp.mpf],
     dps: int = 80,
 ) -> List[int]:
-    """Estima dígitos significativos defendibles por componente frente a la referencia."""
+    """Estima dígitos significativos defendibles (criterio e_rel <= 0.5 * 10^-d)."""
     mp.mp.dps = dps
     digitos: List[int] = []
     for idx, ref in enumerate(x_referencia):
-        aprox_mp = mp.mpf(str(float(x_aprox[idx])))
+        aprox_mp = mp.mpf(float(x_aprox[idx]))
         if ref == 0:
             digitos.append(0)
             continue
@@ -125,7 +141,7 @@ def estimar_digitos_correctos(
         if error_rel == 0:
             d = 15
         else:
-            d = int(math.floor(-mp.log10(error_rel)))
+            d = int(math.floor(-mp.log10(2 * error_rel)))
         d_defendible = max(0, min(15, d))
         digitos.append(d_defendible)
     return digitos
@@ -134,15 +150,15 @@ def estimar_digitos_correctos(
 def verificar_solucion(
     ruta_matriz_a: str | Path,
     ruta_vector_b: str | Path,
-    x_inicial: np.ndarray,
-    usar_pivoteo_escalado: bool = True,
+    resultado_eliminacion: ResultadoEliminacion,
     pasadas_refinamiento: int = 1,
     dps: int = 80,
 ) -> ResultadoVerificacion:
-    """Ejecuta residuo extendido, refinamiento iterativo, control numpy y dígitos correctos."""
+    """Ejecuta residuo extendido, refinamiento reutilizando L y U, control numpy y errores."""
     if pasadas_refinamiento < 1:
         raise ValueError("Se requiere al menos una pasada de refinamiento iterativo.")
 
+    x_inicial = resultado_eliminacion.solucion_x
     A_mp, b_mp = _cargar_datos_mp(ruta_matriz_a, ruta_vector_b, dps=dps)
     A_float = np.array([[float(val) for val in fila] for fila in A_mp], dtype=np.float64)
     b_float = np.array([float(val) for val in b_mp], dtype=np.float64)
@@ -155,13 +171,7 @@ def verificar_solucion(
     for _ in range(pasadas_refinamiento):
         r_actual_mp, _ = calcular_residuo_mp(A_mp, b_mp, x_actual, dps=dps)
         r_actual_float = np.array([float(val) for val in r_actual_mp], dtype=np.float64)
-        corr = eliminacion_gaussiana(
-            A_float,
-            r_actual_float,
-            usar_pivoteo_escalado=usar_pivoteo_escalado,
-            contador=None,
-        )
-        ultima_dx = corr.solucion_x
+        ultima_dx = resolver_con_lu(resultado_eliminacion, r_actual_float)
         x_actual = x_actual + ultima_dx
 
     res_ref, norm_ref = calcular_residuo_mp(A_mp, b_mp, x_actual, dps=dps)
@@ -170,17 +180,12 @@ def verificar_solucion(
     sol_numpy = np.linalg.solve(A_float, b_float)
 
     # Referencia de alta precisión para defender dígitos significativos
-    ref_mp = _estimar_referencia_mp(
-        A_mp,
-        b_mp,
-        x_actual,
-        usar_pivoteo_escalado=usar_pivoteo_escalado,
-        iteraciones=3,
-        dps=dps,
-    )
+    ref_mp = _estimar_referencia_mp(A_mp, b_mp, dps=dps)
 
     dig_ini = estimar_digitos_correctos(x_inicial, ref_mp, dps=dps)
     dig_ref = estimar_digitos_correctos(x_actual, ref_mp, dps=dps)
+    err_inf_ini, err_2_ini = _errores_relativos_globales(x_inicial, ref_mp, dps=dps)
+    err_inf_ref, err_2_ref = _errores_relativos_globales(x_actual, ref_mp, dps=dps)
 
     return ResultadoVerificacion(
         residuo_inicial=res_ini,
@@ -193,5 +198,9 @@ def verificar_solucion(
         referencia_alta_precision=ref_mp,
         digitos_correctos_inicial=dig_ini,
         digitos_correctos_refinada=dig_ref,
+        error_relativo_inf_inicial=err_inf_ini,
+        error_relativo_inf_refinado=err_inf_ref,
+        error_relativo_2_inicial=err_2_ini,
+        error_relativo_2_refinado=err_2_ref,
         pasadas_refinamiento=pasadas_refinamiento,
     )

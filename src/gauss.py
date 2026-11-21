@@ -11,7 +11,9 @@ from src.conteo import ContadorOperaciones
 class ResultadoEliminacion:
     estrategia: str
     solucion_x: np.ndarray
+    matriz_l: np.ndarray
     matriz_u: np.ndarray
+    permutacion: List[int]
     vector_b_mod: np.ndarray
     multiplicadores: List[Tuple[int, int, float]]
     intercambios_realizados: List[Tuple[int, int, int]]
@@ -78,7 +80,9 @@ def _elegir_pivote_escalado(
 
 def _intercambiar_filas(
     A: np.ndarray,
+    L: np.ndarray,
     b: np.ndarray,
+    permutacion: List[int],
     escalas: Optional[np.ndarray],
     fila_a: int,
     fila_b: int,
@@ -88,7 +92,10 @@ def _intercambiar_filas(
     if fila_a == fila_b:
         return
     A[[fila_a, fila_b], :] = A[[fila_b, fila_a], :]
+    if fila_a > 0:
+        L[[fila_a, fila_b], :fila_a] = L[[fila_b, fila_a], :fila_a]
     b[[fila_a, fila_b]] = b[[fila_b, fila_a]]
+    permutacion[fila_a], permutacion[fila_b] = permutacion[fila_b], permutacion[fila_a]
     if escalas is not None:
         escalas[[fila_a, fila_b]] = escalas[[fila_b, fila_a]]
     contador.registrar_intercambio(paso=paso, cantidad=1)
@@ -97,7 +104,7 @@ def _intercambiar_filas(
 def _sustitucion_regresiva(
     U: np.ndarray,
     b_mod: np.ndarray,
-    contador: ContadorOperaciones,
+    contador: Optional[ContadorOperaciones] = None,
 ) -> np.ndarray:
     n = U.shape[0]
     x = np.zeros(n, dtype=np.float64)
@@ -106,17 +113,44 @@ def _sustitucion_regresiva(
         suma = float(b_mod[i])
         for j in range(i + 1, n):
             producto = float(U[i, j]) * float(x[j])
-            contador.registrar_operacion("mult_div", paso=None, cantidad=1)
+            if contador is not None:
+                contador.registrar_operacion("mult_div", paso=None, cantidad=1)
             suma = suma - producto
-            contador.registrar_operacion("sum_resta", paso=None, cantidad=1)
+            if contador is not None:
+                contador.registrar_operacion("sum_resta", paso=None, cantidad=1)
 
         pivote = float(U[i, i])
         if pivote == 0.0:
             raise ZeroDivisionError(f"Pivote nulo en sustitución regresiva en fila {i + 1}.")
         x[i] = suma / pivote
-        contador.registrar_operacion("mult_div", paso=None, cantidad=1)
+        if contador is not None:
+            contador.registrar_operacion("mult_div", paso=None, cantidad=1)
 
     return x
+
+
+def resolver_con_lu(
+    resultado_lu: ResultadoEliminacion,
+    nuevo_b: np.ndarray,
+) -> np.ndarray:
+    """Resuelve A * dx = nuevo_b reutilizando P, L y U sin volver a factorizar A."""
+    L = resultado_lu.matriz_l
+    U = resultado_lu.matriz_u
+    perm = resultado_lu.permutacion
+    n = U.shape[0]
+
+    b_perm = np.array([float(nuevo_b[idx]) for idx in perm], dtype=np.float64)
+    y = np.zeros(n, dtype=np.float64)
+
+    # Sustitución progresiva: L * y = P * b
+    for i in range(n):
+        suma = float(b_perm[i])
+        for j in range(i):
+            suma -= float(L[i, j]) * float(y[j])
+        y[i] = suma
+
+    # Sustitución regresiva: U * dx = y
+    return _sustitucion_regresiva(U, y, contador=None)
 
 
 def eliminacion_gaussiana(
@@ -141,6 +175,9 @@ def eliminacion_gaussiana(
     estrategia = (
         "Con pivoteo parcial escalado" if usar_pivoteo_escalado else "Sin pivoteo"
     )
+
+    L = np.eye(n, dtype=np.float64)
+    permutacion = list(range(n))
 
     max_abs_inicial = float(np.max(np.abs(A)))
     max_abs_durante = max_abs_inicial
@@ -169,7 +206,9 @@ def eliminacion_gaussiana(
         if usar_pivoteo_escalado and escalas is not None:
             fila_pivote = _elegir_pivote_escalado(A, escalas, k, contador, paso)
             if fila_pivote != k:
-                _intercambiar_filas(A, b, escalas, k, fila_pivote, contador, paso)
+                _intercambiar_filas(
+                    A, L, b, permutacion, escalas, k, fila_pivote, contador, paso
+                )
                 hubo_intercambio = True
                 fila_intercambiada_con = fila_pivote
                 intercambios_realizados.append((paso, k + 1, fila_pivote + 1))
@@ -187,6 +226,7 @@ def eliminacion_gaussiana(
             if abs_m > max_mult_abs:
                 max_mult_abs = abs_m
 
+            L[i, k] = m_ik
             multiplicadores.append((paso, i + 1, m_ik))
             mults_paso.append(f"m({i + 1},{k + 1})={m_ik:.6e}")
 
@@ -225,7 +265,9 @@ def eliminacion_gaussiana(
     return ResultadoEliminacion(
         estrategia=estrategia,
         solucion_x=solucion_x,
+        matriz_l=L,
         matriz_u=A,
+        permutacion=permutacion,
         vector_b_mod=b,
         multiplicadores=multiplicadores,
         intercambios_realizados=intercambios_realizados,

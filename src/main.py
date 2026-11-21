@@ -74,10 +74,10 @@ def _escribir_solucion_csv(
     ]
     for i in range(12):
         ref_i = verif_con_piv.referencia_alta_precision[i]
-        x_ref_mp = mp.mpf(str(float(verif_con_piv.solucion_refinada[i])))
-        x_ini_mp = mp.mpf(str(float(res_con_piv.solucion_x[i])))
-        x_sin_mp = mp.mpf(str(float(res_sin_piv.solucion_x[i])))
-        x_np_mp = mp.mpf(str(float(verif_con_piv.solucion_numpy[i])))
+        x_ref_mp = mp.mpf(float(verif_con_piv.solucion_refinada[i]))
+        x_ini_mp = mp.mpf(float(res_con_piv.solucion_x[i]))
+        x_sin_mp = mp.mpf(float(res_sin_piv.solucion_x[i]))
+        x_np_mp = mp.mpf(float(verif_con_piv.solucion_numpy[i]))
 
         d_ref = verif_con_piv.digitos_correctos_refinada[i]
         d_ini = verif_con_piv.digitos_correctos_inicial[i]
@@ -134,6 +134,8 @@ def _escribir_residuo_txt(
         "--- 1. ESTRATEGIA CON PIVOTEO PARCIAL ESCALADO ---",
         f"Multiplicador máximo: {res_con_piv.multiplicador_maximo:.6e}",
         f"Factor de crecimiento: {res_con_piv.factor_crecimiento:.6e}",
+        f"Error relativo inicial ||x_0 - x_ref||_inf / ||x_ref||_inf: {verif_con_piv.error_relativo_inf_inicial:.6e}",
+        f"Error relativo inicial ||x_0 - x_ref||_2 / ||x_ref||_2: {verif_con_piv.error_relativo_2_inicial:.6e}",
         f"Norma infinito residuo inicial ||r_0||_inf: {mp.nstr(verif_con_piv.norma_inf_inicial, 12)}",
         "Vector residuo inicial r_0 = b - A x_0:",
     ]
@@ -142,7 +144,7 @@ def _escribir_residuo_txt(
 
     lineas.extend(
         [
-            f"Pasadas de refinamiento iterativo ejecutadas: {verif_con_piv.pasadas_refinamiento}",
+            f"Pasadas de refinamiento iterativo ejecutadas (reutilizando P, L y U): {verif_con_piv.pasadas_refinamiento}",
             "Corrección obtenida dx:",
         ]
     )
@@ -160,6 +162,8 @@ def _escribir_residuo_txt(
 
     lineas.extend(
         [
+            f"Error relativo refinado ||x_ref - x_ref_mp||_inf / ||x_ref_mp||_inf: {verif_con_piv.error_relativo_inf_refinado:.6e}",
+            f"Error relativo refinado ||x_ref - x_ref_mp||_2 / ||x_ref_mp||_2: {verif_con_piv.error_relativo_2_refinado:.6e}",
             f"Norma infinito residuo refinado ||r_ref||_inf: {mp.nstr(verif_con_piv.norma_inf_refinada, 12)}",
             "Vector residuo refinado r_ref = b - A x_refinada:",
         ]
@@ -178,7 +182,10 @@ def _escribir_residuo_txt(
             "--- 2. ESTRATEGIA SIN PIVOTEO ---",
             f"Multiplicador máximo: {res_sin_piv.multiplicador_maximo:.6e}",
             f"Factor de crecimiento: {res_sin_piv.factor_crecimiento:.6e}",
+            f"Error relativo inicial ||x_0 - x_ref||_inf / ||x_ref||_inf: {verif_sin_piv.error_relativo_inf_inicial:.6e}",
+            f"Error relativo inicial ||x_0 - x_ref||_2 / ||x_ref||_2: {verif_sin_piv.error_relativo_2_inicial:.6e}",
             f"Norma infinito residuo inicial ||r_0||_inf: {mp.nstr(verif_sin_piv.norma_inf_inicial, 12)}",
+            f"Error relativo tras refinamiento ||x_ref - x_ref_mp||_inf / ||x_ref_mp||_inf: {verif_sin_piv.error_relativo_inf_refinado:.6e}",
             f"Norma infinito residuo tras refinamiento ||r_ref||_inf: {mp.nstr(verif_sin_piv.norma_inf_refinada, 12)}",
             f"Dígitos defendibles iniciales por componente: {verif_sin_piv.digitos_correctos_inicial}",
             f"Dígitos defendibles refinados por componente: {verif_sin_piv.digitos_correctos_refinada}",
@@ -210,8 +217,7 @@ def main() -> None:
     verif_con_piv = verificar_solucion(
         ruta_matriz_a=ruta_a,
         ruta_vector_b=ruta_b,
-        x_inicial=res_con_piv.solucion_x,
-        usar_pivoteo_escalado=True,
+        resultado_eliminacion=res_con_piv,
         pasadas_refinamiento=1,
         dps=80,
     )
@@ -219,8 +225,7 @@ def main() -> None:
     verif_sin_piv = verificar_solucion(
         ruta_matriz_a=ruta_a,
         ruta_vector_b=ruta_b,
-        x_inicial=res_sin_piv.solucion_x,
-        usar_pivoteo_escalado=False,
+        resultado_eliminacion=res_sin_piv,
         pasadas_refinamiento=1,
         dps=80,
     )
@@ -259,25 +264,28 @@ def main() -> None:
     print(f"kappa_2(A) estimado: {kappa_2:.6e}")
     print(
         f"Sin pivoteo -> FLOPs: {tot_sin['total_flops']} | mult_max: {res_sin_piv.multiplicador_maximo:.4e} | "
-        f"crec: {res_sin_piv.factor_crecimiento:.4e} | ||r_0||_inf: {mp.nstr(verif_sin_piv.norma_inf_inicial, 6)}"
+        f"crec: {res_sin_piv.factor_crecimiento:.4e} | err_rel_inf: {verif_sin_piv.error_relativo_inf_inicial:.4e} | "
+        f"||r_0||_inf: {mp.nstr(verif_sin_piv.norma_inf_inicial, 6)}"
     )
     print(
         f"Pivoteo escalado -> FLOPs: {tot_con['total_flops']} | sobrecosto pivoteo: "
         f"{tot_con['pivoteo_div']} div_escala, {tot_con['comparaciones']} comp, {tot_con['intercambios']} inter | "
         f"mult_max: {res_con_piv.multiplicador_maximo:.4e} | crec: {res_con_piv.factor_crecimiento:.4e} | "
+        f"err_rel_inf(ini): {verif_con_piv.error_relativo_inf_inicial:.4e} | "
+        f"err_rel_inf(ref): {verif_con_piv.error_relativo_inf_refinado:.4e} | "
         f"||r_0||_inf: {mp.nstr(verif_con_piv.norma_inf_inicial, 6)} | ||r_ref||_inf: {mp.nstr(verif_con_piv.norma_inf_refinada, 6)}"
     )
     print("\n--- TABLA 10 DIGITOS PARA readme.md ---")
     for i in range(12):
-        val_10 = mp.nstr(mp.mpf(str(float(verif_con_piv.solucion_refinada[i]))), n=10)
+        val_10 = mp.nstr(mp.mpf(float(verif_con_piv.solucion_refinada[i])), n=10)
         print(f"| $x_{{{i + 1}}}$ | `{val_10}` |")
 
     print("\n--- TABLA DETALLADA PARA informe.md ---")
     for i in range(12):
         d_ini = verif_con_piv.digitos_correctos_inicial[i]
         d_ref = verif_con_piv.digitos_correctos_refinada[i]
-        val_ini = _formatear_digitos_defendibles(mp.mpf(str(float(res_con_piv.solucion_x[i]))), d_ini)
-        val_ref = _formatear_digitos_defendibles(mp.mpf(str(float(verif_con_piv.solucion_refinada[i]))), d_ref)
+        val_ini = _formatear_digitos_defendibles(mp.mpf(float(res_con_piv.solucion_x[i])), d_ini)
+        val_ref = _formatear_digitos_defendibles(mp.mpf(float(verif_con_piv.solucion_refinada[i])), d_ref)
         print(f"| $x_{{{i + 1}}}$ | `{val_ini}` | {d_ini} | `{val_ref}` | {d_ref} |")
 
 
