@@ -1,92 +1,130 @@
-VERIFICACIÓN INDEPENDIENTE Y REFINAMIENTO ITERATIVO (PRECISIÓN EXTENDIDA mpmath, dps=80)
-====================================================================================
-Epsilon de máquina IEEE 754 (float64): 2.220446e-16
-Número de condición estimado kappa_2(A): 3.084736e+13
-Cota teórica de error relativo kappa_2(A) * eps: 6.849490e-03
+VERIFICACIÓN INDEPENDIENTE — residuo r = b - A x en precisión extendida (mpmath, dps = 80)
+====================================================================================================
+epsilon de máquina (float64): 2.220446e-16
+kappa_2(A) = sigma_max/sigma_min (SVD, solo diagnóstico): 3.084757e+13
+cota clásica kappa_2 * eps: 6.849536e-03  -> 2.16 dígitos garantizados
+kappa_1(A) = 4.467549e+13 | kappa_inf(A) = 5.367827e+13 | det(A) = 1.364551e+09
+kappa_2 tras equilibrar filas (D^-1 A, s_i = max_j|a_ij|): 8.132348e+03
+Casi dependencia: F7 ≈ 4.17324*F3 + 582.69272*F5 (ajuste de mínimos cuadrados relativo); máx. desviación relativa por columna = 8.972e-03
 
---- 1. ESTRATEGIA CON PIVOTEO PARCIAL ESCALADO ---
-Multiplicador máximo: 2.465558e+09
-Factor de crecimiento: 1.783202e+00
-Error relativo inicial ||x_0 - x_ref||_inf / ||x_ref||_inf: 2.357298e-13
-Error relativo inicial ||x_0 - x_ref||_2 / ||x_ref||_2: 2.701713e-13
-Norma infinito residuo inicial ||r_0||_inf: 2.2908764385e-10
+--- CON PIVOTEO PARCIAL ESCALADO ---
+Multiplicador máximo: 2.465558e+09 (2^31.20)
+Factor de crecimiento rho: 1.783202e+00 (0.83 bits)
+Bits absorbidos máximos en una resta (diagnóstico): 6.29
+Elementos no nulos bajo la diagonal de U: 0 de 66
+Error relativo inicial: inf = 2.3573e-13 | 2 = 2.7017e-13
+||r_0||_inf = 2.2908764e-10
+Dígitos correctos iniciales por incógnita: [12, 11, 9, 11, 12, 9, 12, 11, 12, 12, 11, 12]
+Refinamiento iterado en float64 (reutilizando P, L, U):
+  pasada 1: ||r||_inf = 2.60319e-10 | error relativo inf = 6.016e-17
+  pasada 2: ||r||_inf = 2.60319e-10 | error relativo inf = 6.016e-17
+  pasada 3: ||r||_inf = 2.60319e-10 | error relativo inf = 6.016e-17
+Refinamiento iterado en precisión extendida (diagnóstico de contracción):
+  pasada 1: ||r||_inf = 1.36624e-22 | error relativo inf = 6.174e-26
+  pasada 2: ||r||_inf = 3.92751e-35 | error relativo inf = 1.614e-38
+  pasada 3: ||r||_inf = 1.38262e-48 | error relativo inf = 4.224e-51
+  pasada 4: ||r||_inf = 5.37403e-61 | error relativo inf = 1.103e-63
+
+--- CON PIVOTEO PARCIAL ---
+Multiplicador máximo: 6.198819e-01 (2^-0.69)
+Factor de crecimiento rho: 1.000000e+00 (0.00 bits)
+Bits absorbidos máximos en una resta (diagnóstico): 7.26
+Elementos no nulos bajo la diagonal de U: 0 de 66
+Error relativo inicial: inf = 5.5201e-13 | 2 = 6.3310e-13
+||r_0||_inf = 5.3729543e-10
+Dígitos correctos iniciales por incógnita: [12, 11, 9, 10, 12, 9, 11, 11, 12, 12, 11, 11]
+Refinamiento iterado en float64 (reutilizando P, L, U):
+  pasada 1: ||r||_inf = 2.60319e-10 | error relativo inf = 6.016e-17
+  pasada 2: ||r||_inf = 2.60319e-10 | error relativo inf = 6.016e-17
+  pasada 3: ||r||_inf = 2.60319e-10 | error relativo inf = 6.016e-17
+Refinamiento iterado en precisión extendida (diagnóstico de contracción):
+  pasada 1: ||r||_inf = 9.09439e-23 | error relativo inf = 2.630e-25
+  pasada 2: ||r||_inf = 1.12023e-34 | error relativo inf = 1.253e-37
+  pasada 3: ||r||_inf = 1.46596e-47 | error relativo inf = 5.979e-50
+  pasada 4: ||r||_inf = 1.24064e-59 | error relativo inf = 2.853e-62
+
+--- SIN PIVOTEO ---
+Multiplicador máximo: 2.752593e+13 (2^44.65)
+Factor de crecimiento rho: 2.641224e+03 (11.37 bits)
+Bits absorbidos máximos en una resta (diagnóstico): 18.11
+Elementos no nulos bajo la diagonal de U: 0 de 66
+Error relativo inicial: inf = 2.0803e-10 | 2 = 2.3802e-10
+||r_0||_inf = 1.771752e-7
+Dígitos correctos iniciales por incógnita: [9, 9, 6, 8, 9, 6, 9, 8, 9, 9, 8, 9]
+Refinamiento iterado en float64 (reutilizando P, L, U):
+  pasada 1: ||r||_inf = 2.60319e-10 | error relativo inf = 6.016e-17
+  pasada 2: ||r||_inf = 2.60319e-10 | error relativo inf = 6.016e-17
+  pasada 3: ||r||_inf = 2.60319e-10 | error relativo inf = 6.016e-17
+Refinamiento iterado en precisión extendida (diagnóstico de contracción):
+  pasada 1: ||r||_inf = 4.63957e-16 | error relativo inf = 2.814e-20
+  pasada 2: ||r||_inf = 2.43567e-26 | error relativo inf = 3.782e-30
+  pasada 3: ||r||_inf = 4.55965e-36 | error relativo inf = 5.083e-40
+  pasada 4: ||r||_inf = 6.46028e-46 | error relativo inf = 6.833e-50
+
+====================================================================================================
+DETALLE DE LA SOLUCIÓN REPORTADA (pivoteo parcial escalado + 1 pasada de refinamiento)
+
 Vector residuo inicial r_0 = b - A x_0:
-  r_0[1] = -8.07688876628082e-21
-  r_0[2] = -8.72911446459509e-13
-  r_0[3] = -3.59296416665988e-18
-  r_0[4] = 4.3970291398925e-12
-  r_0[5] = -8.92233004959707e-20
-  r_0[6] = 2.29087643849791e-10
-  r_0[7] = -1.39074653607695e-17
-  r_0[8] = 3.11376351593803e-11
-  r_0[9] = -1.8029093061414e-20
+  r_0[ 1] = -8.07688876628082e-21
+  r_0[ 2] = -8.72911446459509e-13
+  r_0[ 3] = -3.59296416665988e-18
+  r_0[ 4] = 4.3970291398925e-12
+  r_0[ 5] = -8.92233004959707e-20
+  r_0[ 6] = 2.29087643849791e-10
+  r_0[ 7] = -1.39074653607695e-17
+  r_0[ 8] = 3.11376351593803e-11
+  r_0[ 9] = -1.8029093061414e-20
   r_0[10] = -3.56663390519945e-12
   r_0[11] = 9.88551124167187e-18
   r_0[12] = 5.1630800096311e-11
-Pasadas de refinamiento iterativo ejecutadas (reutilizando P, L y U): 1
-Corrección obtenida dx:
-  dx[1] = 5.357557e-14
-  dx[2] = -6.709128e-13
-  dx[3] = -3.642833e-13
-  dx[4] = 2.334484e-13
-  dx[5] = 3.433244e-13
-  dx[6] = -5.361872e-13
-  dx[7] = -4.574192e-13
-  dx[8] = -6.256640e-14
-  dx[9] = 1.707897e-13
+||r_0||_inf = 2.2908764385e-10
+
+Corrección dx (1 pasada, costo 276 flops):
+  dx[ 1] = 5.357557e-14
+  dx[ 2] = -6.709128e-13
+  dx[ 3] = -3.642833e-13
+  dx[ 4] = 2.334484e-13
+  dx[ 5] = 3.433244e-13
+  dx[ 6] = -5.361872e-13
+  dx[ 7] = -4.574192e-13
+  dx[ 8] = -6.256640e-14
+  dx[ 9] = 1.707897e-13
   dx[10] = 3.639819e-13
   dx[11] = 6.457052e-14
   dx[12] = 3.396691e-13
-Solución corregida x_refinada vs inicial x_0:
-  x[1]: inicial=7.384915626999e-01 | refinada=7.384915627000e-01 | dígitos ini=12 | dígitos ref=15
-  x[2]: inicial=-1.205937416799e+00 | refinada=-1.205937416800e+00 | dígitos ini=11 | dígitos ref=15
-  x[3]: inicial=4.387195200364e-03 | refinada=4.387195200000e-03 | dígitos ini=9 | dígitos ref=15
-  x[4]: inicial=-9.172645380023e-02 | refinada=-9.172645380000e-02 | dígitos ini=11 | dígitos ref=15
-  x[5]: inicial=2.846109372500e+00 | refinada=2.846109372500e+00 | dígitos ini=12 | dígitos ref=15
-  x[6]: inicial=-6.281540899464e-03 | refinada=-6.281540900000e-03 | dígitos ini=9 | dígitos ref=15
-  x[7]: inicial=1.473820591600e+00 | refinada=1.473820591600e+00 | dígitos ini=12 | dígitos ref=15
-  x[8]: inicial=-3.849271639994e-02 | refinada=-3.849271640000e-02 | dígitos ini=11 | dígitos ref=15
-  x[9]: inicial=9.152648036998e-01 | refinada=9.152648037000e-01 | dígitos ini=12 | dígitos ref=15
-  x[10]: inicial=-2.607139485200e+00 | refinada=-2.607139485200e+00 | dígitos ini=12 | dígitos ref=15
-  x[11]: inicial=5.187362939994e-02 | refinada=5.187362940000e-02 | dígitos ini=11 | dígitos ref=15
-  x[12]: inicial=-1.084937162500e+00 | refinada=-1.084937162500e+00 | dígitos ini=12 | dígitos ref=15
-Error relativo refinado ||x_ref - x_ref_mp||_inf / ||x_ref_mp||_inf: 6.015950e-17
-Error relativo refinado ||x_ref - x_ref_mp||_2 / ||x_ref_mp||_2: 4.855364e-17
-Norma infinito residuo refinado ||r_ref||_inf: 2.60318736961e-10
-Vector residuo refinado r_ref = b - A x_refinada:
-  r_ref[1] = -3.4605794068549e-21
-  r_ref[2] = 1.34238438122214e-12
-  r_ref[3] = 2.32276412858585e-18
-  r_ref[4] = -1.92793022197375e-12
-  r_ref[5] = -1.82977385979084e-20
-  r_ref[6] = -2.60318736960507e-10
-  r_ref[7] = -9.80628710184e-19
-  r_ref[8] = 2.07040494995869e-12
-  r_ref[9] = 9.40636763561438e-21
-  r_ref[10] = -6.94386562142706e-13
-  r_ref[11] = -5.68958557232784e-19
-  r_ref[12] = -9.38478901249693e-12
-Control con numpy.linalg.solve (diferencia absoluta |x_ref - x_numpy|):
-  |x[1]_ref - x[1]_np| = 5.806466e-14
-  |x[2]_ref - x[2]_np| = 7.251977e-13
-  |x[3]_ref - x[3]_np| = 3.952299e-13
-  |x[4]_ref - x[4]_np| = 2.544492e-13
-  |x[5]_ref - x[5]_np| = 3.690381e-13
-  |x[6]_ref - x[6]_np| = 5.820873e-13
-  |x[7]_ref - x[7]_np| = 4.964917e-13
-  |x[8]_ref - x[8]_np| = 6.634970e-14
-  |x[9]_ref - x[9]_np| = 1.857403e-13
-  |x[10]_ref - x[10]_np| = 3.947953e-13
-  |x[11]_ref - x[11]_np| = 7.013140e-14
-  |x[12]_ref - x[12]_np| = 3.690381e-13
 
---- 2. ESTRATEGIA SIN PIVOTEO ---
-Multiplicador máximo: 2.752593e+13
-Factor de crecimiento: 2.641224e+03
-Error relativo inicial ||x_0 - x_ref||_inf / ||x_ref||_inf: 2.080260e-10
-Error relativo inicial ||x_0 - x_ref||_2 / ||x_ref||_2: 2.380178e-10
-Norma infinito residuo inicial ||r_0||_inf: 1.77175200312e-7
-Error relativo tras refinamiento ||x_ref - x_ref_mp||_inf / ||x_ref_mp||_inf: 6.015950e-17
-Norma infinito residuo tras refinamiento ||r_ref||_inf: 2.60318736961e-10
-Dígitos defendibles iniciales por componente: [9, 9, 6, 8, 9, 6, 9, 8, 9, 9, 8, 9]
-Dígitos defendibles refinados por componente: [15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15]
+Vector residuo refinado r = b - A x_refinada:
+  r[ 1] = -3.4605794068549e-21
+  r[ 2] = 1.34238438122214e-12
+  r[ 3] = 2.32276412858585e-18
+  r[ 4] = -1.92793022197375e-12
+  r[ 5] = -1.82977385979084e-20
+  r[ 6] = -2.60318736960507e-10
+  r[ 7] = -9.80628710184e-19
+  r[ 8] = 2.07040494995869e-12
+  r[ 9] = 9.40636763561438e-21
+  r[10] = -6.94386562142706e-13
+  r[11] = -5.68958557232784e-19
+  r[12] = -9.38478901249693e-12
+||r||_inf = 2.60318736961e-10
+
+Error relativo tras refinar: inf = 6.0160e-17 | 2 = 4.8554e-17
+Dígitos correctos tras refinar: [15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15]
+
+Control con numpy.linalg.solve (solo control; no sustituye la implementación propia):
+  error relativo inf de numpy = 5.2322e-13; dígitos correctos: [12, 11, 9, 10, 12, 9, 11, 11, 12, 12, 11, 11]
+  |x_refinada[1] - x_numpy[1]| = 1.172e-13
+  |x_refinada[2] - x_numpy[2]| = 1.489e-12
+  |x_refinada[3] - x_numpy[3]| = 8.068e-13
+  |x_refinada[4] - x_numpy[4]| = 5.161e-13
+  |x_refinada[5] - x_numpy[5]| = 7.656e-13
+  |x_refinada[6] - x_numpy[6]| = 1.190e-12
+  |x_refinada[7] - x_numpy[7]| = 1.016e-12
+  |x_refinada[8] - x_numpy[8]| = 1.388e-13
+  |x_refinada[9] - x_numpy[9]| = 3.769e-13
+  |x_refinada[10] - x_numpy[10]| = 8.065e-13
+  |x_refinada[11] - x_numpy[11]| = 1.441e-13
+  |x_refinada[12] - x_numpy[12]| = 7.530e-13
+
+Nota: el residuo ||r||_inf no baja tras refinar porque x está almacenado en float64; su piso es
+u*|A|*|x| (≈ 1e-10 aquí). Lo que mejora es el error en x (forward error), no el residuo.
