@@ -28,17 +28,17 @@ def _formatear_matriz(M: np.ndarray) -> str:
     return "\n".join(filas_texto)
 
 
-def _calcular_factores_escala(
+def _calcular_factores_escala_iniciales(
     A: np.ndarray,
-    fila_inicio: int,
     contador: ContadorOperaciones,
-    paso: int,
+    paso: int = 1,
 ) -> np.ndarray:
+    """Calcula s_i = max_{1 <= j <= n} |a_{ij}^{(0)}| una sola vez (O(n^2) comparaciones)."""
     n = A.shape[0]
     escalas = np.zeros(n, dtype=np.float64)
-    for i in range(fila_inicio, n):
-        max_val = abs(float(A[i, fila_inicio]))
-        for j in range(fila_inicio + 1, n):
+    for i in range(n):
+        max_val = abs(float(A[i, 0]))
+        for j in range(1, n):
             contador.registrar_comparacion(paso=paso, cantidad=1)
             candidato = abs(float(A[i, j]))
             if candidato > max_val:
@@ -146,6 +146,10 @@ def eliminacion_gaussiana(
     max_abs_durante = max_abs_inicial
     max_mult_abs = 0.0
 
+    escalas: Optional[np.ndarray] = None
+    if usar_pivoteo_escalado:
+        escalas = _calcular_factores_escala_iniciales(A, contador, paso=1)
+
     multiplicadores: List[Tuple[int, int, float]] = []
     intercambios_realizados: List[Tuple[int, int, int]] = []
     bloques_traza: List[str] = [
@@ -162,8 +166,7 @@ def eliminacion_gaussiana(
         hubo_intercambio = False
         fila_intercambiada_con = k
 
-        if usar_pivoteo_escalado:
-            escalas = _calcular_factores_escala(A, k, contador, paso)
+        if usar_pivoteo_escalado and escalas is not None:
             fila_pivote = _elegir_pivote_escalado(A, escalas, k, contador, paso)
             if fila_pivote != k:
                 _intercambiar_filas(A, b, escalas, k, fila_pivote, contador, paso)
