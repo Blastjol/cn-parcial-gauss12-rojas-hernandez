@@ -67,6 +67,3 @@ Pivoteo parcial escalado + 1 pasada de refinamiento (10 cifras significativas; 1
 
 Análisis completo en [informe.md](informe.md).
 
-## Licencia
-
-Trabajo académico de uso educativo para INF-321. No se concede licencia de reutilización comercial.
